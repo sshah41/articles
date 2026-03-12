@@ -170,13 +170,13 @@ The public figure in NVIDIA’s technical report makes that framing more concret
 
 | Benchmark | Nemotron BF16 | Nemotron NVFP4 | GPT-OSS-120B | Qwen3.5-122B |
 | :--- | :--- | :--- | :--- | :--- |
-| **IFBench** | 72.6 | 73.3 | 68.3 | 74.5 |
-| **HMMT Feb25** | 94.7 | 95.4 | 90.0 | 91.3 |
-| **SWE-Bench** | 60.5 | 61.1 | 41.9 | 66.4 |
-| **HLE** | 18.3 | 17.4 | 14.9 | 25.3 |
-| **TerminalBench Hard** | 22.8 | 24.5 | 19.0 | 26.8 |
-| **Tau Bench v2** | 25.8 | 24.0 | 24.0 | 22.3 |
-| **RULER @ 1M** | 61.9 | 61.0 | 73.8 | 91.4 |
+| **IFBench** | 72.6 | 73.3 | 68.3 | **74.5** |
+| **HMMT Feb25** | 94.7 | **95.4** | 90.0 | 91.3 |
+| **SWE-Bench** | 60.5 | 61.1 | 41.9 | **66.4** |
+| **HLE** | 18.3 | 17.4 | 14.9 | **25.3** |
+| **TerminalBench Hard** | 22.8 | 24.5 | 19.0 | **26.8** |
+| **Tau Bench v2** | **25.8** | 24.0 | 24.0 | 22.3 |
+| **RULER @ 1M** | 61.9 | 61.0 | 73.8 | **91.4** |
 | **ISL/OSL Throughput** | 0.6x | **2.2x** | 1.0x (Baseline) | 0.3x |
 
 ```mermaid
