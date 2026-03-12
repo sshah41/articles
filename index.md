@@ -168,14 +168,25 @@ Raw throughput numbers are only impressive if the model remains competitive wher
 
 The public figure in NVIDIA’s technical report makes that framing more concrete. On the chart NVIDIA publishes, Nemotron 3 Super posts the following benchmark results versus GPT-OSS-120B and Qwen3.5-122B on a mixed suite of instruction-following, math, coding, science, tool use, and long-context tests:
 
-* **IFBench:** Nemotron BF16 72.6, Nemotron NVFP4 73.3, GPT-OSS-120B 68.3, Qwen3.5-122B 74.5
-* **HMMT Feb25:** Nemotron BF16 94.7, Nemotron NVFP4 95.4, GPT-OSS-120B 90.0, Qwen3.5-122B 91.3
-* **SWE-Bench:** Nemotron BF16 60.5, Nemotron NVFP4 61.1, GPT-OSS-120B 41.9, Qwen3.5-122B 66.4
-* **HLE:** Nemotron BF16 18.3, Nemotron NVFP4 17.4, GPT-OSS-120B 14.9, Qwen3.5-122B 25.3
-* **TerminalBench Hard:** Nemotron BF16 22.8, Nemotron NVFP4 24.5, GPT-OSS-120B 19.0, Qwen3.5-122B 26.8
-* **Tau Bench v2:** Nemotron BF16 25.8, Nemotron NVFP4 24.0, GPT-OSS-120B 24.0, Qwen3.5-122B 22.3
-* **RULER @ 1M:** Nemotron BF16 61.9, Nemotron NVFP4 61.0, GPT-OSS-120B 73.8, Qwen3.5-122B 91.4
-* **ISL/OSL throughput (relative):** Nemotron BF16 0.6, Nemotron NVFP4 2.2, GPT-OSS-120B 1.0, Qwen3.5-122B 0.3 ([NVIDIA][1])
+| Benchmark | Nemotron BF16 | Nemotron NVFP4 | GPT-OSS-120B | Qwen3.5-122B |
+| :--- | :--- | :--- | :--- | :--- |
+| **IFBench** | 72.6 | 73.3 | 68.3 | 74.5 |
+| **HMMT Feb25** | 94.7 | 95.4 | 90.0 | 91.3 |
+| **SWE-Bench** | 60.5 | 61.1 | 41.9 | 66.4 |
+| **HLE** | 18.3 | 17.4 | 14.9 | 25.3 |
+| **TerminalBench Hard** | 22.8 | 24.5 | 19.0 | 26.8 |
+| **Tau Bench v2** | 25.8 | 24.0 | 24.0 | 22.3 |
+| **RULER @ 1M** | 61.9 | 61.0 | 73.8 | 91.4 |
+| **ISL/OSL Throughput** | 0.6x | **2.2x** | 1.0x (Baseline) | 0.3x |
+
+```mermaid
+xychart-beta
+    title "ISL/OSL Throughput (Relative to GPT-OSS Baseline)"
+    x-axis ["Qwen3.5-122B", "Nemotron BF16", "GPT-OSS-120B", "Nemotron NVFP4"]
+    y-axis "Relative Speed" 0 --> 2.5
+    bar [0.3, 0.6, 1.0, 2.2]
+```
+*Figure 4: Relative token throughput highlighting the massive efficiency dividend of NVFP4 parameter compression and sparse attention.*
 
 There is one important nuance here. The **technical report figure** shows Nemotron as broadly competitive and much faster, but the exact bar values shown in that figure do **not** support a blanket “Nemotron beats Qwen everywhere” story. On several quality benchmarks, Qwen3.5-122B remains stronger; on others, Nemotron is stronger; on throughput, Nemotron is clearly ahead in NVIDIA’s reported setup. Meanwhile, NVIDIA’s **model page** separately states that Nemotron **outperforms both GPT-OSS-120B and Qwen3.5-122B on RULER at 1M context length**. Taken together, the safest interpretation is that NVIDIA is reporting strong overall competitiveness plus a very favorable efficiency profile, with especially strong long-context positioning at full 1M evaluation on its official model page. ([NVIDIA][1])
 
