@@ -125,24 +125,8 @@ LatentMoE takes that one step further. Instead of routing in the full hidden dim
 z = W_down · x
 ```
 
-```mermaid
-flowchart LR
-    Token([Input Token Vector]) --> Wdown[W_down Projection<br><i>Latent Bottleneck compression</i>]
-    Wdown --> Split{Expert<br/>Router}
-    
-    subgraph "512 Total Experts Pool"
-        TopK[Top-k=22 Routed Experts]
-        Shared[Shared Expert Component]
-    end
-    
-    Split --> TopK
-    Split --> Shared
-    
-    TopK --> Wup[W_up Projection<br><i>Dimensionality expansion</i>]
-    Shared --> Wup
-    Wup --> Out([Expanded Output Vector])
-```
-*Figure 3: LatentMoE effectively compresses the representation state prior to expert routing, improving FLOP density.*
+![LatentMoE architectural block from NVIDIA Technical Report](assets/latent_moe_architecture.png)
+*Figure 3: Official technical report visualization of the LatentMoE block architecture, detailing the up-projection and down-projection sequences.*
 
 From a systems perspective, this is a smart trade. Sparse expert computation in a reduced latent dimension is cheaper, which makes it practical to support a very large expert pool. NVIDIA’s public architecture table lists **512 experts per layer with top-k = 22**, alongside a shared-expert component. The exact routing behavior is less important than the overall effect: the model gets access to substantial conditional capacity without the cost profile of an equivalently large dense model. If Mamba improves the economics of sequence modeling, LatentMoE improves the economics of model capacity. ([NVIDIA][1])
 
@@ -152,19 +136,8 @@ The third major component is **multi-token prediction**, or MTP.
 
 Traditional language-model training optimizes next-token prediction. MTP extends that objective so the model learns to predict multiple future tokens jointly. In practice, this enables **native speculative decoding**, where multi-token continuations can be proposed and verified more efficiently than in a strict one-token-at-a-time loop. That matters because speculative decoding is often treated as an external inference trick layered on top of a base model. In Nemotron 3 Super, it is part of the model design itself. 
 
-```mermaid
-flowchart LR
-    Context([Context State]) --> Base[Base Model Compute]
-    Base --> T0[Main Token t]
-    
-    Base -.-> MTP[2 Extra MTP Layers]
-    MTP -. "Draft t+1" .-> D1[Draft Token]
-    MTP -. "Draft t+2" .-> D2[Draft Token]
-    
-    T0 & D1 & D2 --> V{Parallel Verification}
-    V --> Out([Accepted Token Sequence])
-```
-*Figure 4: MTP native speculative decoding generates draft tokens in parallel using dedicated model layers, bypassing strict sequential bottlenecks.*
+![Multi-Token Prediction throughput charts from NVIDIA Technical Report](assets/mtp_throughput.png)
+*Figure 4: Official technical report benchmark charts demonstrating the massive Output TPS efficiency gains delivered by enabling MTP (depth 1 and 3).*
 
 NVIDIA’s public materials report **up to 3× faster inference** from MTP, and the model card describes MTP as supporting both faster text generation and improved quality. ([NVIDIA][1])
 
@@ -178,17 +151,8 @@ NVIDIA says the model was trained with a **mixed-precision recipe** that uses **
 
 This matters because large-model inference is often constrained less by raw arithmetic than by **memory bandwidth**. Lower precision increases data density and reduces the bandwidth cost of moving parameters and state through the system. 
 
-```mermaid
-flowchart TD
-    subgraph "The Memory Wall"
-        HBM[(High Bandwidth Memory<br>HBM3/HBM3e)]
-        SRAM[GPU Compute Cores]
-        
-        HBM -- "BF16 (16 bits/param)<br>Slower, lower data density" --> SRAM
-        HBM == "NVFP4 (4 bits/param)<br>4x denser, maximizes throughput" ==> SRAM
-    end
-```
-*Figure 5: Parameter quantization directly relieves the Memory Bandwidth bound, accelerating large model inference throughput.*
+![NVFP4 training stability charts from NVIDIA Technical Report](assets/nvfp4_stability.png)
+*Figure 5: Official technical report charts demonstrating that NVFP4 quantization successfully avoids gradient underflows and maintains zero-element stability during pretraining.*
 
 If the training recipe is stable enough to preserve quality, that becomes a direct real-world serving advantage. ([NVIDIA][1])
 
