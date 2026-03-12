@@ -97,14 +97,17 @@ graph TD
     
     subgraph "Transformer Attention Model"
         A[Next Token Data] --> C[Compute Attention Matrix]
-        A --> D[Store in Expanding KV Cache Tensor] ::: trans
-        D --> E>Cache memory grows linearly with sequence length] ::: trans
+        A --> D[Store in Expanding KV Cache Tensor]
+        D --> E>Cache memory grows linearly with sequence length]
     end
     
     subgraph "Mamba-2 SSM Model"
         B[Next Token Data] --> F[Update Recurrent Hidden State]
-        F --> G>Spatial volume of hidden state remains explicitly constant] ::: mamba
+        F --> G>Spatial volume of hidden state remains explicitly constant]
     end
+
+    class D,E trans;
+    class G mamba;
 ```
 *Figure 2: Memory footprint contrast between Transformer Attention components and Mamba-2 SSM recurrent states.*
 
