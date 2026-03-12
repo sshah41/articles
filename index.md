@@ -53,11 +53,6 @@ NVIDIA describes Nemotron 3 Super as an **88-layer hybrid stack** that interleav
 
 In the public architecture table, NVIDIA lists **32 query heads** and just **2 KV heads** for the attention configuration. That last detail is especially important for long-context inference, because reducing KV-head count directly reduces decode-time cache growth. NVIDIA also lists **512 experts per layer**, **top-k = 22**, and **2 MTP layers** in the model architecture. ([NVIDIA][1])
 
-```mermaid
-flowchart TD
-    Start([Input Tokens]) --> Emb[Embedding Layer]
-    Emb --> Stack[88-Layer Hybrid Stack]
-    
 ![Nemotron 3 Super Layer Pattern](assets/architecture_pattern.png)
 *Figure 1: Official layer pattern of Nemotron 3 Super. An 88-layer hybrid stack predominantly using Mamba-2 for linear-time context processing, with sparse LatentMoE for capacity, and selective Attention anchors for global routing.*
 
@@ -77,7 +72,26 @@ h(t) = Ā · h(t-1) + B · x(t)
 
 That means sequence information is propagated through recurrent state updates rather than through a growing Transformer-style key-value memory.
 
-*Figure 2: Memory footprint contrast: Transformer attention memory grows linearly, whereas Mamba-2 explicitly maintains a constant spatial volume for its recurrent hidden state.*
+```mermaid
+graph TD
+    classDef trans fill:#f9d0c4,stroke:#e06666,stroke-width:2px;
+    classDef mamba fill:#d0e0e3,stroke:#76a5af,stroke-width:2px;
+    
+    subgraph "Transformer Attention Model"
+        A[Next Token Data] --> C[Compute Attention Matrix]
+        A --> D[Store in Expanding KV Cache Tensor]
+        D --> E>Cache memory grows linearly with sequence length]
+    end
+    
+    subgraph "Mamba-2 SSM Model"
+        B[Next Token Data] --> F[Update Recurrent Hidden State]
+        F --> G>Spatial volume of hidden state remains explicitly constant]
+    end
+
+    class D,E trans;
+    class G mamba;
+```
+*Figure 2: Memory footprint contrast between Transformer Attention components and Mamba-2 SSM recurrent states.*
 
 The practical implication is straightforward: **Mamba-2 layers do not contribute to Transformer-style KV-cache growth**. They still have their own compute and state costs, but they avoid one of the main scaling pains that makes very long Transformer contexts awkward and expensive at inference time. For long-horizon agents, that matters a lot. If you want a system to carry large working memory, repository-scale code context, or persistent research state, shifting more of the sequence-processing burden away from attention is not just elegant. It is operationally useful. ([NVIDIA][1])
 
