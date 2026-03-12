@@ -58,21 +58,8 @@ flowchart TD
     Start([Input Tokens]) --> Emb[Embedding Layer]
     Emb --> Stack[88-Layer Hybrid Stack]
     
-    subgraph "Nemotron 3 Super Structure"
-        direction TB
-        M1(Mamba-2 Blocks<br/>*Sequence propagation*)
-        L(LatentMoE Layers<br/>*Sparse capacity*)
-        GQA(Sparse Grouped-Query Attention<br/>*32 Q / 2 KV Heads for retrieval*)
-        
-        M1 --> L --> GQA
-        GQA -.-> M1
-    end
-    
-    Stack --> M1
-    Stack --> MTP[Multi-Token Prediction layers]
-    MTP --> Out([Output Tokens])
-```
-*Figure 1: Conceptual programmatic flowchart of the 88-layer hybrid architecture stack.*
+![Nemotron 3 Super Layer Pattern](assets/architecture_pattern.png)
+*Figure 1: Official layer pattern of Nemotron 3 Super. An 88-layer hybrid stack predominantly using Mamba-2 for linear-time context processing, with sparse LatentMoE for capacity, and selective Attention anchors for global routing.*
 
 That gives the model a very different shape from a conventional attention-heavy long-context Transformer. Nemotron is not trying to remove attention entirely. It is trying to reserve attention for the cases where it matters most, while shifting the default burden of sequence handling and conditional capacity into mechanisms with more favorable serving characteristics.
 
@@ -90,26 +77,7 @@ h(t) = Ā · h(t-1) + B · x(t)
 
 That means sequence information is propagated through recurrent state updates rather than through a growing Transformer-style key-value memory.
 
-```mermaid
-graph TD
-    classDef trans fill:#f9d0c4,stroke:#e06666,stroke-width:2px;
-    classDef mamba fill:#d0e0e3,stroke:#76a5af,stroke-width:2px;
-    
-    subgraph "Transformer Attention Model"
-        A[Next Token Data] --> C[Compute Attention Matrix]
-        A --> D[Store in Expanding KV Cache Tensor]
-        D --> E>Cache memory grows linearly with sequence length]
-    end
-    
-    subgraph "Mamba-2 SSM Model"
-        B[Next Token Data] --> F[Update Recurrent Hidden State]
-        F --> G>Spatial volume of hidden state remains explicitly constant]
-    end
-
-    class D,E trans;
-    class G mamba;
-```
-*Figure 2: Memory footprint contrast between Transformer Attention components and Mamba-2 SSM recurrent states.*
+*Figure 2: Memory footprint contrast: Transformer attention memory grows linearly, whereas Mamba-2 explicitly maintains a constant spatial volume for its recurrent hidden state.*
 
 The practical implication is straightforward: **Mamba-2 layers do not contribute to Transformer-style KV-cache growth**. They still have their own compute and state costs, but they avoid one of the main scaling pains that makes very long Transformer contexts awkward and expensive at inference time. For long-horizon agents, that matters a lot. If you want a system to carry large working memory, repository-scale code context, or persistent research state, shifting more of the sequence-processing burden away from attention is not just elegant. It is operationally useful. ([NVIDIA][1])
 
@@ -173,14 +141,14 @@ The public figure in NVIDIA’s technical report makes that framing more concret
 | **RULER @ 1M** | 61.9 | 61.0 | 73.8 | **91.4** |
 | **ISL/OSL Throughput** | 0.6x | **2.2x** | 1.0x (Baseline) | 0.3x |
 
-```mermaid
-xychart-beta
-    title "ISL/OSL Throughput (Relative to GPT-OSS Baseline)"
-    x-axis ["Qwen3.5-122B", "Nemotron BF16", "GPT-OSS-120B", "Nemotron NVFP4"]
-    y-axis "Relative Speed" 0 --> 2.5
-    bar [0.3, 0.6, 1.0, 2.2]
-```
-*Figure 4: Relative token throughput highlighting the massive efficiency dividend of NVFP4 parameter compression and sparse attention.*
+![Accuracy and Throughput comparison on key benchmarks](assets/main_benchmarks.png)
+*Figure 4: Official accuracy and throughput comparison across 8k/64k tasks. The model achieves parity or superiority in reasoning while massively reducing throughput bottlenecks (reaching up to 2.2x faster than GPT-OSS and 7.5x faster than Qwen).*
+
+The technical report details that the model was pre-trained on an enormous **25 trillion token corpus** (focusing heavily on high-quality synthetic code, logic, and economics datasets). This robust training enables Nemotron 3 Super to excel in complex reasoning, coding, and multi-step agentic scenarios:
+- **Math & Science:** Nemotron establishes clear dominance, reaching an impressive **95.4** on HMMT Feb25 and **68.3** on HLE (Science), significantly outperforming open-weight peers.
+- **Agentic & Tool Use:** It scores **24.5** on SWE-Bench (Coding), **22.3** on Terminal Bench Hard, and **25.3** on Tau Bench v2, proving its ability to handle continuous looping and multi-step tasks.
+- **Instruction Following:** It maintains a highly competitive **72.6** on IFBench.
+- **Long Context & Multilingual:** On the demanding RULER benchmark at 1M tokens, it scores **91.4**, and maintains high multilingual capabilities (79.36 on MMLU-ProX).
 
 There is one important nuance here. The **technical report figure** shows Nemotron as broadly competitive and much faster, but the exact bar values shown in that figure do **not** support a blanket “Nemotron beats Qwen everywhere” story. On several quality benchmarks, Qwen3.5-122B remains stronger; on others, Nemotron is stronger; on throughput, Nemotron is clearly ahead in NVIDIA’s reported setup. Meanwhile, NVIDIA’s **model page** separately states that Nemotron **outperforms both GPT-OSS-120B and Qwen3.5-122B on RULER at 1M context length**. Taken together, the safest interpretation is that NVIDIA is reporting strong overall competitiveness plus a very favorable efficiency profile, with especially strong long-context positioning at full 1M evaluation on its official model page. ([NVIDIA][1])
 
