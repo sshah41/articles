@@ -150,7 +150,23 @@ From a systems perspective, this is a smart trade. Sparse expert computation in 
 
 The third major component is **multi-token prediction**, or MTP.
 
-Traditional language-model training optimizes next-token prediction. MTP extends that objective so the model learns to predict multiple future tokens jointly. In practice, this enables **native speculative decoding**, where multi-token continuations can be proposed and verified more efficiently than in a strict one-token-at-a-time loop. That matters because speculative decoding is often treated as an external inference trick layered on top of a base model. In Nemotron 3 Super, it is part of the model design itself. NVIDIA’s public materials report **up to 3× faster inference** from MTP, and the model card describes MTP as supporting both faster text generation and improved quality. ([NVIDIA][1])
+Traditional language-model training optimizes next-token prediction. MTP extends that objective so the model learns to predict multiple future tokens jointly. In practice, this enables **native speculative decoding**, where multi-token continuations can be proposed and verified more efficiently than in a strict one-token-at-a-time loop. That matters because speculative decoding is often treated as an external inference trick layered on top of a base model. In Nemotron 3 Super, it is part of the model design itself. 
+
+```mermaid
+flowchart LR
+    Context([Context State]) --> Base[Base Model Compute]
+    Base --> T0[Main Token t]
+    
+    Base -.-> MTP[2 Extra MTP Layers]
+    MTP -. "Draft t+1" .-> D1[Draft Token]
+    MTP -. "Draft t+2" .-> D2[Draft Token]
+    
+    T0 & D1 & D2 --> V{Parallel Verification}
+    V --> Out([Accepted Token Sequence])
+```
+*Figure 4: MTP native speculative decoding generates draft tokens in parallel using dedicated model layers, bypassing strict sequential bottlenecks.*
+
+NVIDIA’s public materials report **up to 3× faster inference** from MTP, and the model card describes MTP as supporting both faster text generation and improved quality. ([NVIDIA][1])
 
 The bigger point is architectural, not just numerical: this model was built with **serving efficiency** in mind, not only offline benchmark quality.
 
@@ -160,7 +176,21 @@ Nemotron 3 Super is also notable for how aggressively it targets low-precision e
 
 NVIDIA says the model was trained with a **mixed-precision recipe** that uses **NVFP4** heavily, while preserving higher precision in parts of the network where stability matters more. That is an important distinction. Nemotron is not simply “4-bit everywhere.” It is a low-precision design applied selectively, in a way meant to preserve model quality while improving efficiency. NVIDIA’s technical report states that the model was pretrained on **25 trillion tokens** and that NVFP4-native pretraining was a core part of the design. The Hugging Face model card lists the release date as **March 11, 2026** and describes the architecture as **LatentMoE - Mamba-2 + MoE + Attention hybrid with MTP**. ([NVIDIA][1])
 
-This matters because large-model inference is often constrained less by raw arithmetic than by **memory bandwidth**. Lower precision increases data density and reduces the bandwidth cost of moving parameters and state through the system. If the training recipe is stable enough to preserve quality, that becomes a direct real-world serving advantage. ([NVIDIA][1])
+This matters because large-model inference is often constrained less by raw arithmetic than by **memory bandwidth**. Lower precision increases data density and reduces the bandwidth cost of moving parameters and state through the system. 
+
+```mermaid
+flowchart TD
+    subgraph "The Memory Wall"
+        HBM[(High Bandwidth Memory<br>HBM3/HBM3e)]
+        SRAM[GPU Compute Cores]
+        
+        HBM -- "BF16 (16 bits/param)<br>Slower, lower data density" --> SRAM
+        HBM == "NVFP4 (4 bits/param)<br>4x denser, maximizes throughput" ==> SRAM
+    end
+```
+*Figure 5: Parameter quantization directly relieves the Memory Bandwidth bound, accelerating large model inference throughput.*
+
+If the training recipe is stable enough to preserve quality, that becomes a direct real-world serving advantage. ([NVIDIA][1])
 
 ## Head-to-head: speed is only interesting if quality holds
 
