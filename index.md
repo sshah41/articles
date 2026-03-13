@@ -51,9 +51,14 @@ NVIDIA describes Nemotron 3 Super as an **88-layer hybrid stack** that interleav
 * **LatentMoE layers** for sparse high-capacity feed-forward computation
 * **a small number of grouped-query attention layers** for long-range associative recall ([NVIDIA][1])
 
-In the public architecture table, NVIDIA lists **32 query heads** and just **2 KV heads** for the attention configuration. That last detail is especially important for long-context inference, because reducing KV-head count directly reduces decode-time cache growth. NVIDIA also lists **512 experts per layer**, **top-k = 22**, and **2 MTP layers** in the model architecture. ([NVIDIA][1])
+In the public architecture table, NVIDIA provides exact figures for these design choices:
 
-![Nemotron 3 Super Layer Pattern](assets/architecture_pattern.png)
+![Table 1: Nemotron 3 Super Architectural Dimensions](assets/table_1_architecture.png)
+*Table 1: Official architectural dimensions specifying 88 total layers, 512 experts per layer, and the inclusion of Multi-Token Prediction layers.*
+
+This configuration—particularly the reduction to just **2 KV heads** combined with **32 query heads**—is especially important for long-context inference, because minimizing KV-head count directly reduces decode-time cache growth. ([NVIDIA][1])
+
+![Nemotron 3 Super Layer Pattern](assets/figure_2_layer_pattern.png)
 *Figure 1: Official layer pattern of Nemotron 3 Super. An 88-layer hybrid stack predominantly using Mamba-2 for linear-time context processing, with sparse LatentMoE for capacity, and selective Attention anchors for global routing.*
 
 That gives the model a very different shape from a conventional attention-heavy long-context Transformer. Nemotron is not trying to remove attention entirely. It is trying to reserve attention for the cases where it matters most, while shifting the default burden of sequence handling and conditional capacity into mechanisms with more favorable serving characteristics.
@@ -118,8 +123,8 @@ LatentMoE takes that one step further. Instead of routing in the full hidden dim
 z = W_down · x
 ```
 
-![LatentMoE architectural block from NVIDIA Technical Report](assets/latent_moe_architecture.png)
-*Figure 3: Official technical report visualization of the LatentMoE block architecture, detailing the up-projection and down-projection sequences.*
+![Figure 3: Standard MoE vs. LatentMoE](assets/figure_3_latent_moe.png)
+*Figure 3: Official technical report visualization comparing Standard MoE and LatentMoE, detailing how the up-projection and down-projection sequences reduce all-to-all networking traffic and parameter loading.*
 
 From a systems perspective, this is a smart trade. Sparse expert computation in a reduced latent dimension is cheaper, which makes it practical to support a very large expert pool. NVIDIA’s public architecture table lists **512 experts per layer with top-k = 22**, alongside a shared-expert component. The exact routing behavior is less important than the overall effect: the model gets access to substantial conditional capacity without the cost profile of an equivalently large dense model. If Mamba improves the economics of sequence modeling, LatentMoE improves the economics of model capacity. ([NVIDIA][1])
 
@@ -129,8 +134,8 @@ The third major component is **multi-token prediction**, or MTP.
 
 Traditional language-model training optimizes next-token prediction. MTP extends that objective so the model learns to predict multiple future tokens jointly. In practice, this enables **native speculative decoding**, where multi-token continuations can be proposed and verified more efficiently than in a strict one-token-at-a-time loop. That matters because speculative decoding is often treated as an external inference trick layered on top of a base model. In Nemotron 3 Super, it is part of the model design itself. 
 
-![Multi-Token Prediction throughput charts from NVIDIA Technical Report](assets/mtp_throughput.png)
-*Figure 4: Official technical report benchmark charts demonstrating the massive Output TPS efficiency gains delivered by enabling MTP (depth 1 and 3).*
+![Figures 4 and 5: MTP Performance](assets/figure_4_5_mtp.png)
+*Figures 4 & 5: Official charts demonstrating Nemotron 3 Super's high MTP acceptance rates across draft indices (left) and the resulting massive Output TPS efficiency gains compared to the baseline with MTP disabled (right).*
 
 NVIDIA’s public materials report **up to 3× faster inference** from MTP, and the model card describes MTP as supporting both faster text generation and improved quality. ([NVIDIA][1])
 
@@ -153,21 +158,13 @@ If the training recipe is stable enough to preserve quality, that becomes a dire
 
 Raw throughput numbers are only impressive if the model remains competitive where it counts. NVIDIA’s public benchmark framing is notable because Nemotron 3 Super is not being positioned as a “smaller-but-weaker” tradeoff. Instead, NVIDIA says the model achieves **better or on-par benchmark accuracies** than **GPT-OSS-120B** and **Qwen3.5-122B**, while also delivering large throughput gains. The model page uses slightly different language — **higher or comparable accuracies** across a diverse benchmark set — but the message is consistent: NVIDIA is arguing that Nemotron moves the efficiency frontier without taking a major capability hit. ([NVIDIA][1])
 
-The public figure in NVIDIA’s technical report makes that framing more concrete. On the chart NVIDIA publishes, Nemotron 3 Super posts the following benchmark results versus GPT-OSS-120B and Qwen3.5-122B on a mixed suite of instruction-following, math, coding, science, tool use, and long-context tests:
+The public figure in NVIDIA’s technical report makes that framing more concrete. Below is the full evaluation suite comparing the exact capabilities of the BF16, FP8, and NVFP4 checkpoints against Qwen3.5-122B and GPT-OSS-120B across a massive battery of Agentic, Reasoning, and Chat tasks:
 
-| Benchmark | Nemotron BF16 | Nemotron NVFP4 | GPT-OSS-120B | Qwen3.5-122B |
-| :--- | :--- | :--- | :--- | :--- |
-| **IFBench** | 72.6 | 73.3 | 68.3 | **74.5** |
-| **HMMT Feb25** | 94.7 | **95.4** | 90.0 | 91.3 |
-| **SWE-Bench** | 60.5 | 61.1 | 41.9 | **66.4** |
-| **HLE** | 18.3 | 17.4 | 14.9 | **25.3** |
-| **TerminalBench Hard** | 22.8 | 24.5 | 19.0 | **26.8** |
-| **Tau Bench v2** | **25.8** | 24.0 | 24.0 | 22.3 |
-| **RULER @ 1M** | 61.9 | 61.0 | 73.8 | **91.4** |
-| **ISL/OSL Throughput** | 0.6x | **2.2x** | 1.0x (Baseline) | 0.3x |
+![Table 9: Comprehensive Evaluation Suite](assets/table_9_comprehensive_eval.png)
+*Table 9: The official comprehensive evaluation suite from the technical report. Notice how resilient the NVFP4 checkpoint remains across all major benchmark categories compared to the BF16 baseline.*
 
-![Accuracy and Throughput comparison on key benchmarks](assets/main_benchmarks.png)
-*Figure 4: Official accuracy and throughput comparison across 8k/64k tasks. The model achieves parity or superiority in reasoning while massively reducing throughput bottlenecks (reaching up to 2.2x faster than GPT-OSS and 7.5x faster than Qwen).*
+![Accuracy and Throughput comparison on key benchmarks](assets/figure_1_benchmarks.png)
+*Figure 1: Official accuracy and throughput comparison across 8k/64k tasks. The model achieves parity or superiority in reasoning while massively reducing throughput bottlenecks (reaching up to 2.2x faster than GPT-OSS and 7.5x faster than Qwen).*
 
 The technical report details that the model was pre-trained on an enormous **25 trillion token corpus** (focusing heavily on high-quality synthetic code, logic, and economics datasets). This robust training enables Nemotron 3 Super to excel in complex reasoning, coding, and multi-step agentic scenarios:
 - **Math & Science:** Nemotron establishes clear dominance, reaching an impressive **95.4** on HMMT Feb25 and **68.3** on HLE (Science), significantly outperforming open-weight peers.
