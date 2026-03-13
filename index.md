@@ -93,7 +93,18 @@ graph TD
 ```
 *Figure 2: Memory footprint contrast between Transformer Attention components and Mamba-2 SSM recurrent states.*
 
-The practical implication is straightforward: **Mamba-2 layers do not contribute to Transformer-style KV-cache growth**. They still have their own compute and state costs, but they avoid one of the main scaling pains that makes very long Transformer contexts awkward and expensive at inference time. For long-horizon agents, that matters a lot. If you want a system to carry large working memory, repository-scale code context, or persistent research state, shifting more of the sequence-processing burden away from attention is not just elegant. It is operationally useful. ([NVIDIA][1])
+The practical implication is straightforward: **Mamba-2 layers do not contribute to Transformer-style KV-cache growth**. 
+
+To understand why this is a massive breakthrough, we must look at the constraints of standard Transformers. On a Qwen-class pure-Transformer model, simply holding 256k tokens in context consumes ~6 GB of VRAM for the KV cache alone. Pushing that to a 1M-token context causes the KV cache to balloon to roughly 24 GB—eating up a massive portion of an H100 or B200's VRAM budget before a single weight or activation is even accounted for. Inference latency also explodes, as the system becomes entirely memory-bandwidth bound, spending its time reading and writing to enormous cache tensors rather than computing probabilities.
+
+Because Nemotron's Mamba-2 layers explicitly maintain a constant-size spatial volume for their recurrent state, **Nemotron 3 Super saves roughly 18 GB of VRAM at 1M tokens compared to a Qwen3.5-122B-class model**.
+
+That 18 GB of recovered VRAM is not just a theoretical win; it fundamentally changes what you can serve in production. It provides the crucial overhead required to:
+1. **Increase Batch Sizes:** Serve far more concurrent users on the same node without running out of memory.
+2. **Scale Multi-Agent Workloads:** Operate multiple independent agents (e.g., a massive code-review agent and a testing agent) sharing a common working state simultaneously on a single GPU.
+3. **Execute Looping Contexts:** Stack substantially longer reasoning chains in autonomous loops without forcing expensive CPU offloading or multi-node sharding.
+
+If you want a system to carry large working memory, repository-scale code context, or persistent research state, shifting more of the sequence-processing burden away from attention is not just elegant. It is operationally useful. ([NVIDIA][1])
 
 ## LatentMoE gives the model more capacity without dense-model cost
 
