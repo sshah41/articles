@@ -1,0 +1,1359 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nemotron 3 Super — Interactive Deep Dive</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Outfit:wght@300;400;500;700;900&display=swap"
+    rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    :root {
+      --color-bg: #030305;
+      --color-surface: rgba(255, 255, 255, 0.02);
+      --color-surface-hover: rgba(255, 255, 255, 0.05);
+      --color-border: rgba(255, 255, 255, 0.1);
+      --color-border-hover: rgba(255, 255, 255, 0.2);
+
+      --color-nvidia: #76b900;
+      --color-cyan: #00E5FF;
+      --color-orange: #FF6D00;
+      --color-purple: #B000FF;
+
+      --text-main: #FFFFFF;
+      --text-muted: #8A8D98;
+
+      --font-sans: 'Outfit', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+
+      --glass-blur: blur(20px);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--color-bg);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--color-nvidia);
+    }
+
+    body {
+      background-color: var(--color-bg);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      overflow-x: hidden;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Typography */
+    h1,
+    h2,
+    h3 {
+      font-family: var(--font-sans);
+      font-weight: 900;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+    }
+
+    h1 {
+      font-size: clamp(3rem, 7vw, 6rem);
+      margin-bottom: 1.5rem;
+      text-transform: uppercase;
+    }
+
+    h2 {
+      font-size: clamp(2rem, 4vw, 3.5rem);
+      margin-bottom: 1rem;
+    }
+
+    p.lead {
+      font-size: clamp(1.1rem, 2vw, 1.4rem);
+      color: var(--text-muted);
+      max-width: 800px;
+      font-weight: 300;
+      margin-bottom: 3rem;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 1.25rem;
+      border-radius: 100px;
+      background: rgba(118, 185, 0, 0.1);
+      border: 1px solid rgba(118, 185, 0, 0.3);
+      color: var(--color-nvidia);
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 2rem;
+      backdrop-filter: var(--glass-blur);
+    }
+
+    .badge::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background: var(--color-nvidia);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--color-nvidia);
+      animation: pulse 2s infinite ease-in-out;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      50% {
+        opacity: 0.4;
+        transform: scale(0.8);
+      }
+    }
+
+    /* Gradients */
+    .text-gradient {
+      background: linear-gradient(135deg, #FFFFFF 0%, var(--text-muted) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .text-gradient-nvidia {
+      background: linear-gradient(135deg, #FFFFFF 20%, var(--color-nvidia) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* Sections */
+    section {
+      position: relative;
+      padding: 8rem 5%;
+      z-index: 10;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* ── HERO ── */
+    #hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding-top: 20vh;
+    }
+
+    #hero-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100vh;
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 2;
+      opacity: 0;
+      transform: translateY(40px);
+      animation: fadeUp 1s 0.2s forwards cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes fadeUp {
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .scroll-indicator {
+      position: absolute;
+      bottom: 3rem;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      animation: float 3s ease-in-out infinite;
+      opacity: 0;
+      animation-delay: 1.5s;
+      animation-fill-mode: forwards;
+    }
+
+    .scroll-indicator svg {
+      width: 24px;
+      height: 24px;
+      color: var(--color-nvidia);
+    }
+
+    @keyframes float {
+
+      0%,
+      100% {
+        transform: translate(-50%, 0);
+        opacity: 0.7;
+      }
+
+      50% {
+        transform: translate(-50%, 10px);
+        opacity: 1;
+      }
+    }
+
+    /* ── STATS STRIP ── */
+    .stats-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1px;
+      background: var(--color-border);
+      padding: 1px;
+      border-radius: 24px;
+      margin-top: -4rem;
+      position: relative;
+      z-index: 20;
+      backdrop-filter: var(--glass-blur);
+      overflow: hidden;
+    }
+
+    .stat-box {
+      background: rgba(10, 10, 15, 0.8);
+      padding: 3rem 2rem;
+      text-align: center;
+      transition: background 0.4s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .stat-box:hover {
+      background: rgba(30, 30, 40, 0.9);
+    }
+
+    .stat-box::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 3px;
+      background: var(--color-nvidia);
+      transform: scaleX(0);
+      transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      transform-origin: left;
+    }
+
+    .stat-box:hover::before {
+      transform: scaleX(1);
+    }
+
+    .stat-val {
+      font-family: var(--font-mono);
+      font-size: clamp(2.5rem, 4vw, 3.5rem);
+      font-weight: 800;
+      color: #FFF;
+      display: block;
+      line-height: 1;
+      margin-bottom: 0.5rem;
+      text-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+    }
+
+    .stat-box:hover .stat-val {
+      color: var(--color-nvidia);
+      text-shadow: 0 0 30px rgba(118, 185, 0, 0.4);
+    }
+
+    .stat-lbl {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      font-weight: 500;
+    }
+
+    /* ── ARCHITECTURE ── */
+    .arch-grid {
+      display: grid;
+      grid-template-columns: 1fr 400px;
+      gap: 4rem;
+      align-items: center;
+    }
+
+    @media (max-width: 1024px) {
+      .arch-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .arch-viewer {
+      position: relative;
+      aspect-ratio: 16/10;
+      border-radius: 24px;
+      background: radial-gradient(circle at 50% 50%, rgba(30, 30, 45, 0.4) 0%, rgba(5, 5, 10, 0.8) 100%);
+      border: 1px solid var(--color-border);
+      box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.8), 0 20px 50px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+      cursor: grab;
+    }
+
+    .arch-viewer:active {
+      cursor: grabbing;
+    }
+
+    #arch-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .arch-tooltip {
+      position: absolute;
+      pointer-events: none;
+      opacity: 0;
+      transform: translate(-50%, -150%);
+      background: rgba(15, 15, 20, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--color-border);
+      padding: 1rem 1.5rem;
+      border-radius: 12px;
+      color: white;
+      font-size: 0.9rem;
+      transition: opacity 0.2s;
+      z-index: 100;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      white-space: nowrap;
+    }
+
+    .arch-tooltip.visible {
+      opacity: 1;
+    }
+
+    .legend-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .legend-item {
+      display: flex;
+      gap: 1rem;
+      padding: 1.5rem;
+      border-radius: 16px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .legend-item::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      transition: width 0.3s;
+    }
+
+    .legend-item[data-type="mamba"]::after {
+      background: var(--color-cyan);
+    }
+
+    .legend-item[data-type="moe"]::after {
+      background: var(--color-orange);
+    }
+
+    .legend-item[data-type="attention"]::after {
+      background: var(--color-nvidia);
+    }
+
+    .legend-item:hover,
+    .legend-item.active {
+      background: var(--color-surface-hover);
+      border-color: var(--color-border-hover);
+      transform: translateX(5px);
+    }
+
+    .legend-item:hover::after,
+    .legend-item.active::after {
+      width: 100%;
+      opacity: 0.05;
+    }
+
+    .legend-dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      margin-top: 4px;
+      box-shadow: 0 0 15px currentColor;
+    }
+
+    .legend-content h4 {
+      font-size: 1.1rem;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .legend-content p {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+      font-weight: 300;
+    }
+
+    .layer-count {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 0.2rem 0.6rem;
+      border-radius: 100px;
+      color: white;
+    }
+
+    /* ── KV CACHE ── */
+    .panel {
+      background: rgba(20, 20, 25, 0.4);
+      border: 1px solid var(--color-border);
+      border-radius: 32px;
+      padding: 4rem;
+      backdrop-filter: var(--glass-blur);
+    }
+
+    @media (max-width: 768px) {
+      .panel {
+        padding: 2rem;
+      }
+    }
+
+    .kv-controls {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      margin-bottom: 3rem;
+      flex-wrap: wrap;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 1.5rem 2.5rem;
+      border-radius: 100px;
+      border: 1px solid var(--color-border);
+    }
+
+    .kv-val {
+      font-family: var(--font-mono);
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--color-cyan);
+      min-width: 140px;
+      text-shadow: 0 0 20px rgba(0, 229, 255, 0.4);
+    }
+
+    input[type=range] {
+      flex: 1;
+      min-width: 250px;
+      height: 6px;
+      appearance: none;
+      -webkit-appearance: none;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      cursor: pointer;
+      outline: none;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #FFF;
+      cursor: grab;
+      box-shadow: 0 0 20px rgba(255, 255, 255, 0.5), inset 0 0 0 6px var(--color-cyan);
+      transition: transform 0.1s;
+    }
+
+    input[type=range]::-webkit-slider-thumb:active {
+      cursor: grabbing;
+      transform: scale(1.1);
+    }
+
+    #kv-canvas {
+      width: 100%;
+      height: 450px;
+      display: block;
+      border-radius: 16px;
+    }
+
+    /* ── INNOVATIONS CARDS ── */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 2rem;
+      perspective: 1000px;
+    }
+
+    .inn-card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: 24px;
+      padding: 3rem 2rem;
+      transition: transform 0.1s;
+      transform-style: preserve-3d;
+      position: relative;
+    }
+
+    .inn-card::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: 25px;
+      z-index: -1;
+      background: linear-gradient(135deg, var(--c), transparent 50%);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .inn-card:hover::before {
+      opacity: 0.5;
+    }
+
+    .card-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      margin-bottom: 2rem;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      transform: translateZ(30px);
+    }
+
+    .inn-card h3 {
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+      transform: translateZ(20px);
+    }
+
+    .inn-card p {
+      font-size: 1rem;
+      color: var(--text-muted);
+      font-weight: 300;
+      line-height: 1.7;
+      transform: translateZ(10px);
+    }
+
+    /* ── ANIMATIONS (Intersection Observer) ── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(60px);
+      transition: all 1s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .reveal.active {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .delay-1 {
+      transition-delay: 0.1s;
+    }
+
+    .delay-2 {
+      transition-delay: 0.2s;
+    }
+
+    .delay-3 {
+      transition-delay: 0.3s;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 4rem 2rem;
+      border-top: 1px solid var(--color-border);
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    footer a {
+      color: var(--color-nvidia);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    footer a:hover {
+      color: #FFF;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- HERO -->
+  <section id="hero">
+    <canvas id="hero-canvas"></canvas>
+    <div class="container hero-content">
+      <div class="badge">A New Paradigm in AI Architecture</div>
+      <h1 class="text-gradient-nvidia">Nemotron 3<br>Super</h1>
+      <p class="lead" style="margin: 0 auto;">The Hybrid MoE Model that shatters the memory wall.<br>Unlocking true
+        1M-token Agentic AI by rethinking the Transformer.</p>
+    </div>
+    <div class="scroll-indicator">
+      Explore the Architecture
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <path d="M7 13l5 5 5-5M7 6l5 5 5-5" />
+      </svg>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <section style="padding-top: 0;">
+    <div class="container">
+      <div class="stats-container reveal">
+        <div class="stat-box">
+          <span class="stat-val" data-target="120" data-suffix="B">0B</span>
+          <span class="stat-lbl">Total Parameters</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-val" data-target="12" data-suffix="B">0B</span>
+          <span class="stat-lbl">Active Params</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-val" data-target="1" data-suffix="M+">0</span>
+          <span class="stat-lbl">Token Context</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-val" data-target="25" data-suffix="T">0T</span>
+          <span class="stat-lbl">Training Tokens</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-val" data-target="7.5" data-suffix="x" data-float="true">0x</span>
+          <span class="stat-lbl">Throughput Boost</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ARCHITECTURE -->
+  <section id="architecture">
+    <div class="container">
+      <div class="reveal">
+        <h2 class="text-gradient">The 52-Layer Hybrid Stack</h2>
+        <p class="lead">Instead of paying the quadratic Attention tax at every layer, Nemotron 3 Super routes processing
+          through three distinct architectures. Interact with the stack below.</p>
+      </div>
+
+      <div class="arch-grid">
+        <div class="arch-viewer reveal delay-1">
+          <canvas id="arch-canvas"></canvas>
+          <div id="arch-tooltip" class="arch-tooltip"></div>
+        </div>
+
+        <div class="legend-list reveal delay-2">
+          <div class="legend-item" data-type="mamba" style="--c: var(--color-cyan)">
+            <div class="legend-dot" style="background: var(--color-cyan); color: var(--color-cyan);"></div>
+            <div class="legend-content">
+              <h4 style="color: var(--color-cyan);">Mamba-2 Layers <span class="layer-count">23 Layers</span></h4>
+              <p>State-space models operating in linear time. They handle the bulk of sequence processing with a
+                constant-size recurrent state, contributing <strong>zero</strong> to the KV Cache.</p>
+            </div>
+          </div>
+
+          <div class="legend-item" data-type="moe" style="--c: var(--color-orange)">
+            <div class="legend-dot" style="background: var(--color-orange); color: var(--color-orange);"></div>
+            <div class="legend-content">
+              <h4 style="color: var(--color-orange);">LatentMoE Layers <span class="layer-count">23 Layers</span></h4>
+              <p>Highly efficient feed-forward blocks. Projects tokens into a latent space before routing across 128
+                experts, activating top-6 routed + 2 shared experts.</p>
+            </div>
+          </div>
+
+          <div class="legend-item" data-type="attention" style="--c: var(--color-nvidia)">
+            <div class="legend-dot" style="background: var(--color-nvidia); color: var(--color-nvidia);"></div>
+            <div class="legend-content">
+              <h4 style="color: var(--color-nvidia);">GQA Attention <span class="layer-count">6 Layers</span></h4>
+              <p>Used sparsely as "global anchors" for precise long-range retrieval. By limiting Attention to just 6
+                layers, memory overhead is drastically minimized.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- KV CACHE -->
+  <section id="cache">
+    <div class="container">
+      <div class="panel reveal">
+        <h2 class="text-gradient">Solving the Memory Wall</h2>
+        <p class="lead">At massive context lengths, the Key-Value (KV) Cache engulfs GPU memory. Watch how Nemotron's
+          hybrid design scales to 1M tokens without crashing an 80GB H100 GPU.</p>
+
+        <div class="kv-controls">
+          <span class="kv-val" id="kv-display">32,000</span>
+          <span
+            style="color: var(--text-muted); font-family: var(--font-mono); text-transform: uppercase;">Tokens</span>
+          <input type="range" id="kv-slider" min="0" max="1000" value="32" step="1">
+        </div>
+
+        <canvas id="kv-canvas"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- INNOVATIONS -->
+  <section id="innovations" style="padding-bottom: 12rem;">
+    <div class="container">
+      <div class="reveal">
+        <h2 class="text-gradient">Core Innovations</h2>
+        <p class="lead">Built from the ground up for the Blackwell era, integrating three major structural leaps.</p>
+      </div>
+
+      <div class="cards-grid">
+        <div class="inn-card tilt reveal delay-1" style="--c: var(--color-cyan)">
+          <div class="card-icon" style="color: var(--color-cyan);">⚡</div>
+          <h3 style="color: #FFF;">LatentMoE</h3>
+          <p>Before routing tokens to 128 specialized experts, representations are compressed into a latent space. This
+            allows activating 8 experts per token at the computational cost of far fewer in standard MoE models.</p>
+        </div>
+
+        <div class="inn-card tilt reveal delay-2" style="--c: var(--color-nvidia)">
+          <div class="card-icon" style="color: var(--color-nvidia);">🚀</div>
+          <h3 style="color: #FFF;">Multi-Token Prediction</h3>
+          <p>Trained natively to predict multiple future tokens simultaneously. This allows for integrated speculative
+            decoding, yielding up to 3× faster generation speeds without accuracy loss on long reasoning chains.</p>
+        </div>
+
+        <div class="inn-card tilt reveal delay-3" style="--c: var(--color-orange)">
+          <div class="card-icon" style="color: var(--color-orange);">🔬</div>
+          <h3 style="color: #FFF;">NVFP4 Native</h3>
+          <p>Pretrained on 25 Trillion tokens natively in NVIDIA's 4-bit floating-point format from the very first
+            gradient update. The weights learn the quantization space, delivering full-precision accuracy at 4-bit
+            speeds.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Inspired by the <a
+      href="https://developer.nvidia.com/blog/introducing-nemotron-3-super-an-open-hybrid-mamba-transformer-moe-for-agentic-reasoning/"
+      target="_blank">NVIDIA Technical Blog</a>. Redesigned with advanced CSS & WebGL for an immersive experience.
+  </footer>
+
+  <script>
+    // --- UTILS ---
+    const formatNumber = num => num.toLocaleString();
+
+    // --- SCROLL REVEAL (Intersection Observer) ---
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('active');
+
+          // Trigger stat counter if it's the stats container
+          if (entry.target.classList.contains('stats-container')) {
+            document.querySelectorAll('.stat-val').forEach(el => {
+              const target = parseFloat(el.getAttribute('data-target'));
+              const suffix = el.getAttribute('data-suffix');
+              const isFloat = el.getAttribute('data-float') === 'true';
+              let count = 0;
+              const speed = target / 40; // 40 frames
+
+              const updateCount = () => {
+                count += speed;
+                if (count < target) {
+                  el.innerText = (isFloat ? count.toFixed(1) : Math.ceil(count)) + suffix;
+                  requestAnimationFrame(updateCount);
+                } else {
+                  el.innerText = target + suffix;
+                }
+              };
+              updateCount();
+            });
+          }
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.15 });
+
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+
+    // --- 3D HERO BACKGROUND (Dynamic Node Network) ---
+    (function initHero3D() {
+      const canvas = document.getElementById('hero-canvas');
+      const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+      const scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x030305, 0.002);
+
+      const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 1000);
+      camera.position.z = 200;
+      camera.position.y = 50;
+      camera.lookAt(0, 0, 0);
+
+      // Particles
+      const particleCount = 1000;
+      const geometry = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const colors = new Float32Array(particleCount * 3);
+
+      const colorNvidia = new THREE.Color(0x76b900);
+      const colorCyan = new THREE.Color(0x00E5FF);
+
+      for (let i = 0; i < particleCount; i++) {
+        positions[i * 3] = (Math.random() - 0.5) * 600;
+        positions[i * 3 + 1] = (Math.random() - 0.5) * 400;
+        positions[i * 3 + 2] = (Math.random() - 0.5) * 600;
+
+        // Mix colors
+        const mixed = Math.random() > 0.6 ? colorNvidia : colorCyan;
+        colors[i * 3] = mixed.r;
+        colors[i * 3 + 1] = mixed.g;
+        colors[i * 3 + 2] = mixed.b;
+      }
+
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+      // Custom glowing material using points map
+      const canvasTex = document.createElement('canvas');
+      canvasTex.width = 16; canvasTex.height = 16;
+      const ctxTex = canvasTex.getContext('2d');
+      const grade = ctxTex.createRadialGradient(8, 8, 0, 8, 8, 8);
+      grade.addColorStop(0, 'rgba(255,255,255,1)');
+      grade.addColorStop(0.2, 'rgba(255,255,255,0.8)');
+      grade.addColorStop(1, 'rgba(0,0,0,0)');
+      ctxTex.fillStyle = grade; ctxTex.fillRect(0, 0, 16, 16);
+      const texture = new THREE.CanvasTexture(canvasTex);
+
+      const material = new THREE.PointsMaterial({
+        size: 4, vertexColors: true, map: texture,
+        blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.8
+      });
+
+      const particles = new THREE.Points(geometry, material);
+      scene.add(particles);
+
+      // Mouse interaction
+      let mouseX = 0, mouseY = 0;
+      let targetX = 0, targetY = 0;
+      const windowHalfX = window.innerWidth / 2;
+      const windowHalfY = window.innerHeight / 2;
+
+      document.addEventListener('mousemove', (e) => {
+        mouseX = (e.clientX - windowHalfX) * 0.1;
+        mouseY = (e.clientY - windowHalfY) * 0.1;
+      });
+
+      function resize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+      window.addEventListener('resize', resize);
+      resize();
+
+      let time = 0;
+      function animate() {
+        requestAnimationFrame(animate);
+        time += 0.002;
+
+        // Smooth camera pan based on mouse
+        targetX = mouseX * 0.5;
+        targetY = mouseY * 0.5;
+        camera.position.x += (targetX - camera.position.x) * 0.05;
+        camera.position.y += (-targetY - camera.position.y) * 0.05 + Math.sin(time) * 0.5;
+        camera.lookAt(0, 0, 0);
+
+        particles.rotation.y = time * 0.5;
+
+        const posAttr = particles.geometry.attributes.position;
+        for (let i = 0; i < particleCount; i++) {
+          posAttr.array[i * 3 + 1] += Math.sin(time * 5 + posAttr.array[i * 3]) * 0.2;
+        }
+        posAttr.needsUpdate = true;
+
+        renderer.render(scene, camera);
+      }
+      animate();
+    })();
+
+
+    // --- 3D ARCHITECTURE VIEWER (Rings/Disks) ---
+    (function initArch3D() {
+      const canvas = document.getElementById('arch-canvas');
+      const container = canvas.parentElement;
+      const tooltip = document.getElementById('arch-tooltip');
+
+      const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 100);
+      camera.position.set(0, 18, 30);
+      camera.lookAt(0, 0, 0);
+
+      // Lighting
+      scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+      const light = new THREE.DirectionalLight(0xffffff, 1);
+      light.position.set(10, 20, 10);
+      scene.add(light);
+
+      // Point lights that sweep up and down
+      const pLight1 = new THREE.PointLight(0x00E5FF, 3, 20);
+      const pLight2 = new THREE.PointLight(0x76b900, 3, 20);
+      scene.add(pLight1); scene.add(pLight2);
+
+      // Architecture Specs: 52 Layers
+      // Attention: 6 layers (spread out). Mamba: 23, MoE: 23 (alternating mostly)
+      const layerTotal = 52;
+      const attnIndices = [8, 17, 26, 35, 43, 51];
+      const typeMap = [];
+      let mCount = 0, oCount = 0;
+      for (let i = 0; i < layerTotal; i++) {
+        if (attnIndices.includes(i)) typeMap.push('attention');
+        else if (mCount <= oCount) { typeMap.push('mamba'); mCount++; }
+        else { typeMap.push('moe'); oCount++; }
+      }
+
+      const matConfig = {
+        mamba: { color: 0x00E5FF, size: 4.5, emit: 0.1 },
+        moe: { color: 0xFF6D00, size: 4.5, emit: 0.1 },
+        attention: { color: 0x76b900, size: 5.5, emit: 0.6 } // Attn layers pop out more
+      };
+
+      const layersGroup = new THREE.Group();
+      scene.add(layersGroup);
+      const layerMeshes = [];
+
+      const spacing = 0.5;
+      const startY = -(layerTotal * spacing) / 2;
+
+      // Geometry: We use Torus (rings) for a cooler tech look than boxes
+      const geoNormal = new THREE.TorusGeometry(3.5, 0.3, 16, 64);
+      const geoAttn = new THREE.TorusGeometry(4.2, 0.4, 16, 64);
+
+      typeMap.forEach((type, index) => {
+        const config = matConfig[type];
+        const geo = type === 'attention' ? geoAttn : geoNormal;
+        const mat = new THREE.MeshStandardMaterial({
+          color: config.color,
+          emissive: config.color,
+          emissiveIntensity: config.emit,
+          roughness: 0.2, metalness: 0.8,
+          transparent: true, opacity: 0.85
+        });
+
+        // Add an inner translucent disk
+        const diskGeo = new THREE.CircleGeometry(type === 'attention' ? 3.8 : 3.2, 32);
+        const diskMat = new THREE.MeshBasicMaterial({ color: config.color, transparent: true, opacity: 0.1, side: THREE.DoubleSide });
+        const disk = new THREE.Mesh(diskGeo, diskMat);
+        disk.rotation.x = Math.PI / 2;
+
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.rotation.x = Math.PI / 2;
+        mesh.position.y = startY + (index * spacing);
+
+        // Custom data for interaction
+        mesh.userData = { type, originalY: mesh.position.y, index, originalScale: 1, baseEmit: config.emit };
+        mesh.add(disk); // Group disk inside torus
+
+        layersGroup.add(mesh);
+        layerMeshes.push(mesh);
+      });
+
+      // Interaction variables
+      const raycaster = new THREE.Raycaster();
+      const mouse = new THREE.Vector2();
+      let hoveredMesh = null;
+      let activeFilter = null;
+
+      let isDragging = false;
+      let previousMousePosition = { x: 0, y: 0 };
+      let targetRotation = { x: 0.2, y: 0 }; // Slight downward angle
+
+      // Resize handler
+      const resizeObserver = new ResizeObserver(() => {
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+      });
+      resizeObserver.observe(container);
+
+      // Mouse & Drag Events
+      canvas.addEventListener('mousedown', e => { isDragging = true; previousMousePosition = { x: e.offsetX, y: e.offsetY }; });
+      window.addEventListener('mouseup', () => isDragging = false);
+
+      canvas.addEventListener('mousemove', e => {
+        // 3D rotation logic
+        if (isDragging) {
+          const deltaX = e.offsetX - previousMousePosition.x;
+          const deltaY = e.offsetY - previousMousePosition.y;
+          targetRotation.y += deltaX * 0.01;
+          targetRotation.x += deltaY * 0.01;
+          targetRotation.x = Math.max(-0.5, Math.min(1.2, targetRotation.x)); // Limit pitch
+          previousMousePosition = { x: e.offsetX, y: e.offsetY };
+        }
+
+        // Raycasting for hover
+        const rect = canvas.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(layerMeshes, false); // false = don't check children (the disks)
+
+        if (intersects.length > 0 && !isDragging) {
+          const hit = intersects[0].object;
+          if (hoveredMesh !== hit) {
+            hoveredMesh = hit;
+            document.body.style.cursor = 'pointer';
+
+            // Setup Tooltip
+            const labels = { mamba: 'Mamba-2 Layer', moe: 'LatentMoE Layer', attention: 'GQA Attention Layer' };
+            tooltip.innerHTML = `<span style="color: #${matConfig[hit.userData.type].color.toString(16).padStart(6, '0')}"><strong>${labels[hit.userData.type]}</strong></span><br><span style="color: #aaa; font-size: 0.8rem">Layer ${hit.userData.index + 1} of 52</span>`;
+            tooltip.classList.add('visible');
+          }
+
+          // Keep tooltip near mouse
+          tooltip.style.left = `${e.clientX - rect.left}px`;
+          tooltip.style.top = `${e.clientY - rect.top - 20}px`;
+        } else {
+          if (hoveredMesh) {
+            hoveredMesh = null;
+            document.body.style.cursor = 'grab';
+            tooltip.classList.remove('visible');
+          }
+        }
+      });
+
+      canvas.addEventListener('mouseleave', () => { hoveredMesh = null; tooltip.classList.remove('visible'); isDragging = false; });
+
+      // Connect HTML legends to 3D filter
+      document.querySelectorAll('.legend-item').forEach(item => {
+        item.addEventListener('mouseenter', () => { activeFilter = item.dataset.type; item.classList.add('active'); });
+        item.addEventListener('mouseleave', () => { activeFilter = null; item.classList.remove('active'); });
+      });
+
+      // Animation Loop
+      let time = 0;
+      function animate() {
+        requestAnimationFrame(animate);
+        time += 0.01;
+
+        // Sweep lights
+        pLight1.position.y = Math.sin(time) * 15;
+        pLight2.position.y = Math.cos(time * 0.8) * 15;
+
+        // Smooth group rotation
+        layersGroup.rotation.x += (targetRotation.x - layersGroup.rotation.x) * 0.1;
+        layersGroup.rotation.y += (targetRotation.y - layersGroup.rotation.y) * 0.1;
+        if (!isDragging) targetRotation.y += 0.002; // Auto rotate
+
+        // Update individual layers
+        layerMeshes.forEach(mesh => {
+          const data = mesh.userData;
+          let targetScale = 1;
+          let targetOpacity = 0.85;
+          let targetEmit = data.baseEmit;
+
+          const isHovered = mesh === hoveredMesh;
+          const isFilteredOut = activeFilter && data.type !== activeFilter;
+
+          if (isFilteredOut) {
+            targetOpacity = 0.1;
+            targetEmit = 0;
+          } else if (activeFilter && data.type === activeFilter) {
+            targetScale = data.type === 'attention' ? 1.1 : 1.05;
+            targetEmit = 0.8;
+          }
+
+          if (isHovered) {
+            targetScale = data.type === 'attention' ? 1.15 : 1.1;
+            targetEmit = 1;
+            targetOpacity = 1;
+          }
+
+          // Pulsing effect for attention layers
+          if (data.type === 'attention' && !isFilteredOut && !isHovered) {
+            targetEmit = data.baseEmit + Math.sin(time * 3 + data.index) * 0.3;
+          }
+
+          // Smooth transitions
+          mesh.scale.setScalar(mesh.scale.x + (targetScale - mesh.scale.x) * 0.1);
+          mesh.material.opacity += (targetOpacity - mesh.material.opacity) * 0.1;
+          mesh.material.emissiveIntensity += (targetEmit - mesh.material.emissiveIntensity) * 0.1;
+
+          // Slight independent rotation
+          mesh.rotation.z = Math.sin(time + data.index * 0.1) * 0.1;
+        });
+
+        renderer.render(scene, camera);
+      }
+      animate();
+    })();
+
+
+    // --- KV CACHE CANVAS CHART (Spring Physics) ---
+    (function initKVChart() {
+      const canvas = document.getElementById('kv-canvas');
+      const ctx = canvas.getContext('2d');
+      const slider = document.getElementById('kv-slider');
+      const display = document.getElementById('kv-display');
+
+      // Data definitions
+      const models = [
+        { name: 'Nemotron 3 Super', kbPerToken: 6, color: '#76b900' },
+        { name: 'Llama-3 70B', kbPerToken: 36, color: '#00E5FF' }, // Swapped color to fit new theme
+        { name: 'Qwen 122B', kbPerToken: 24, color: '#B000FF' }
+      ];
+      const maxVRAM = 80; // GB (H100)
+
+      // State
+      let currentTokens = 32000;
+      let targetTokens = 32000;
+
+      // Target values mapped exponentially from slider 0-1000
+      // Slider 0 -> 1k, Slider 1000 -> 1M
+      slider.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value);
+        // Exponential mapping
+        targetTokens = Math.floor(Math.pow(10, 3 + (val / 1000) * 3));
+        display.innerText = formatNumber(targetTokens);
+      });
+
+      // Physics engine for smoothed values
+      let animatedTokens = currentTokens;
+      let velocity = 0;
+
+      function resize() {
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.parentElement.getBoundingClientRect();
+        // Adjust height manually or match aspect
+        canvas.width = rect.width * dpr;
+        canvas.height = 450 * dpr;
+        canvas.style.width = `${rect.width}px`;
+        canvas.style.height = `450px`;
+        ctx.scale(dpr, dpr);
+        ctx.font = 'bold 14px "Outfit"';
+      }
+      window.addEventListener('resize', resize);
+      resize();
+
+      function drawRoundedRect(ctx, x, y, width, height, radius) {
+        if (height < 0) { y += height; height = Math.abs(height); } // Handle bottom-up
+        if (height < radius * 2) radius = height / 2;
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + width - radius, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+        ctx.lineTo(x + width, y + height - radius);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+        ctx.lineTo(x + radius, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
+      }
+
+      function draw() {
+        const W = canvas.clientWidth;
+        const H = canvas.clientHeight;
+
+        // Clear background
+        ctx.clearRect(0, 0, W, H);
+
+        const padTop = 60, padBot = 60, padSides = 40;
+        const chartW = W - padSides * 2;
+        const chartH = H - padTop - padBot;
+
+        // Graph bounds
+        const maxGBScale = 120; // Chart goes up to 120GB
+
+        // Draw grid lines
+        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+        ctx.lineWidth = 1;
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+
+        [0, 40, 80, 120].forEach(gb => {
+          const y = padTop + chartH - (gb / maxGBScale) * chartH;
+          ctx.beginPath(); ctx.moveTo(padSides, y); ctx.lineTo(W - padSides, y); ctx.stroke();
+          ctx.fillText(gb + ' GB', padSides - 10, y);
+        });
+
+        // Draw H100 limit line (80GB)
+        const limitY = padTop + chartH - (80 / maxGBScale) * chartH;
+        ctx.save();
+        ctx.strokeStyle = '#FF3333';
+        ctx.setLineDash([5, 5]);
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(padSides, limitY); ctx.lineTo(W - padSides, limitY); ctx.stroke();
+
+        // Limit Text
+        ctx.fillStyle = '#FF3333';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText('H100 Limit (80 GB)', padSides + 10, limitY - 5);
+        ctx.restore();
+
+        // Calculate columns
+        const numCols = models.length;
+        const spacing = Math.min(80, chartW / (numCols * 2));
+        const colWidth = Math.min(120, (chartW - spacing * (numCols - 1)) / numCols);
+        const totalW = colWidth * numCols + spacing * (numCols - 1);
+        const startX = padSides + (chartW - totalW) / 2;
+
+        // Draw bars
+        models.forEach((model, i) => {
+          // Calculate GB used
+          const gbUsed = (animatedTokens * model.kbPerToken) / (1024 * 1024);
+          const isOOM = gbUsed > maxVRAM;
+
+          // Calculate height (clamp to chart top)
+          const displayHeight = Math.min((gbUsed / maxGBScale) * chartH, chartH + 20); // allow poking out slightly
+          const x = startX + i * (colWidth + spacing);
+          const y = padTop + chartH;
+
+          // Base Bar
+          ctx.fillStyle = 'rgba(255,255,255,0.02)';
+          drawRoundedRect(ctx, x, padTop, colWidth, chartH, 10);
+          ctx.fill();
+
+          // Filled Bar
+          const grad = ctx.createLinearGradient(0, y, 0, y - displayHeight);
+          const baseColor = isOOM ? '#FF3333' : model.color;
+          grad.addColorStop(0, baseColor + '11'); // Hex + alpha
+          grad.addColorStop(1, baseColor + 'DD');
+
+          ctx.save();
+          ctx.fillStyle = grad;
+          if (isOOM) {
+            ctx.shadowColor = '#FF3333';
+            ctx.shadowBlur = 15 + Math.sin(Date.now() * 0.01) * 5; // Pulsing shadow on fail
+          } else {
+            ctx.shadowColor = model.color;
+            ctx.shadowBlur = 15;
+          }
+
+          drawRoundedRect(ctx, x, y, colWidth, -displayHeight, 8);
+          ctx.fill();
+          ctx.restore();
+
+          // Top accent line
+          ctx.fillStyle = '#FFF';
+          drawRoundedRect(ctx, x, y - displayHeight, colWidth, 4, 2);
+          ctx.fill();
+
+          // Labels
+          ctx.textAlign = 'center';
+
+          // Value text
+          ctx.fillStyle = isOOM ? '#FF3333' : '#FFF';
+          ctx.textBaseline = 'bottom';
+          ctx.font = 'bold 18px "JetBrains Mono"';
+          ctx.fillText(gbUsed.toFixed(1) + ' GB', x + colWidth / 2, y - displayHeight - 12);
+
+          if (isOOM) {
+            ctx.font = 'bold 12px "Outfit"';
+            ctx.fillStyle = '#FF3333';
+            ctx.fillText('OUT OF MEMORY', x + colWidth / 2, y - displayHeight - 35);
+          }
+
+          // Model name text
+          ctx.textBaseline = 'top';
+          ctx.font = 'bold 14px "Outfit"';
+          ctx.fillStyle = '#FFF';
+          ctx.fillText(model.name, x + colWidth / 2, y + 15);
+
+          // Subtitle
+          ctx.font = '400 12px "Outfit"';
+          ctx.fillStyle = 'rgba(255,255,255,0.5)';
+          ctx.fillText(`~${model.kbPerToken} KiB / token`, x + colWidth / 2, y + 35);
+        });
+      }
+
+      function loop() {
+        requestAnimationFrame(loop);
+
+        // Spring physics for animation
+        const k = 0.1; // Spring stiffness
+        const d = 0.8; // Damping
+        const ax = (targetTokens - animatedTokens) * k;
+        velocity += ax;
+        velocity *= d;
+        animatedTokens += velocity;
+
+        draw();
+      }
+      loop();
+    })();
+
+
+    // --- CARDS 3D TILT EFFECT ---
+    document.querySelectorAll('.tilt').forEach(el => {
+      el.addEventListener('mousemove', e => {
+        const rect = el.getBoundingClientRect();
+        const x = e.clientX - rect.left - rect.width / 2;
+        const y = e.clientY - rect.top - rect.height / 2;
+        const mult = 10;
+        el.style.transform = `perspective(1000px) rotateX(${-y / mult}deg) rotateY(${x / mult}deg) scale3d(1.02, 1.02, 1.02)`;
+        el.style.zIndex = 10;
+      });
+      el.addEventListener('mouseleave', () => {
+        el.style.transform = `perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)`;
+        el.style.zIndex = 1;
+      });
+    });
+  </script>
+</body>
+
+</html>

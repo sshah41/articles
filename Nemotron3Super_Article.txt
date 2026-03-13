@@ -1,0 +1,121 @@
+
+ARCHITECTURE DEEP DIVE
+Nemotron 3 Super: How NVIDIA’s Hybrid MoE Unlocks 1M-Token Agentic AI
+Released March 2026 · Audience: ML engineers, technical PMs, and technically-minded AI enthusiasts
+
+
+Nemotron 3 Super represents one of the most significant architectural leaps in open-weight large language models for agentic and long-context workloads. Released by NVIDIA in March 2026, this 120B-total / 12B-active-parameter Mixture-of-Experts (MoE) model fuses three co-designed innovations — a hybrid Mamba-Transformer backbone, LatentMoE, and multi-token prediction (MTP) — to make 1M-token contexts not merely possible, but practical on real hardware.
+The result is a model that redraws the frontier for long-context agents, multi-turn research assistants, and RAG pipelines over entire codebases or books. This article unpacks why — starting with the fundamental physics that have constrained every major Transformer-based model before it.
+
+The Problem: Long Context Is a Systems Problem
+Many strong open models excel at short-to-medium contexts, but once you push toward 256k, 512k, or 1M tokens, the constraint is no longer just model quality. It becomes a hardware systems problem. The core issue is the KV cache.
+
+The Standard Transformer KV Cache Formula
+In an autoregressive Transformer or attention-heavy MoE, decode-time KV-cache memory grows approximately as:
+
+Bytes per token (BF16) =
+  num_attention_layers × 2 (K + V) × (num_KV_heads × head_dim) × 2 bytes
+
+That formula is useful because it isolates the part of memory that grows directly with sequence length. If you plug public architecture numbers into it, the long-context tax becomes concrete:
+
+Model
+Geometry used for estimate
+BF16 KV bytes/token
+KV cache at 262k
+KV cache at 1M
+Nemotron 3 Super
+8 attention anchors from NVIDIA's published layer-pattern figure, 2 KV heads, head dim 128
+8,192
+2.0 GiB
+7.6 GiB
+Qwen3-235B-A22B-Instruct-2507
+94 layers, 4 KV heads, head dim 128
+192,512
+47.0 GiB
+179.3 GiB
+Llama 3.3 70B Instruct
+80 layers, 8 KV heads, head dim 128
+327,680
+80.0 GiB
+305.2 GiB
+
+These numbers are KV-cache only. They exclude model weights, activations, runtime overhead, and in Nemotron's case the fixed-size recurrent state used by Mamba-2. That distinction matters. Qwen's own 1M deployment guidance warns that total GPU memory can land around 1,000 GB at 1M context. In other words: long context is not just a product feature, it is a memory-budgeting problem.
+
+I am using Qwen3-235B and Llama 3.3 here because their public configs make the KV-cache arithmetic explicit. NVIDIA's benchmark charts later in the piece use a different comparison set, mainly Qwen3.5-122B and GPT-OSS-120B. That is a benchmark choice, not a contradiction in the systems story.
+
+How Nemotron 3 Super Flips the Equation
+Nemotron 3 Super's key insight is architectural restraint: use attention sparingly, and handle most sequence processing with Mamba-2 state-space layers, which maintain a fixed-size recurrent state rather than a sequence-growing KV cache.
+
+The Hybrid Architecture
+NVIDIA's technical report describes Nemotron 3 Super as an 88-layer hybrid stack built from three components:
+Layer Type
+Primary Role
+Mamba-2
+Linear-time sequence propagation with constant-size recurrent state
+LatentMoE
+Sparse high-capacity feed-forward compute
+Grouped-query attention
+Selective global recall using 32 query heads, 2 KV heads, head dim 128
+
+The layer-pattern figure is easiest to read as a macro-block schedule, and read literally it shows only 8 attention-anchor insertions across the stack. That is the crucial systems point. Attention is still present, but it is not everywhere.
+
+Because the Mamba-2 layers do not contribute to Transformer-style KV-cache growth, Nemotron lands around 2.0 GiB of BF16 KV cache at 262k tokens and 7.6 GiB at 1M tokens for batch size 1. That is still significant, but it is far closer to something a single high-end node can absorb than the 47-80 GiB KV footprints that attention-heavy peers hit at 262k, or the 179-305 GiB footprints they can hit at 1M.
+
+That difference is why Nemotron is interesting. Once KV state reaches tens or hundreds of GiB, the model spends a large fraction of its serving budget on memory traffic. Nemotron keeps most of the stack out of that scaling law.
+
+The Three Co-Designed Innovations
+The KV cache efficiency isn’t the whole story. Nemotron 3 Super combines three innovations that together produce a model that is simultaneously faster, more accurate, and cheaper to run than its size class would suggest.
+1. LatentMoE: More Experts for Less Compute
+Standard MoE layers route tokens to a subset of experts to reduce FLOPs. LatentMoE goes further by projecting token representations into a smaller latent space before routing, then expanding back. This allows the model to activate more experts (top-6 routed + 2 shared = 8 total) for roughly the cost of activating far fewer in a standard design. The practical result: richer feature mixing at a given compute budget, translating to better accuracy per FLOP.
+2. Multi-Token Prediction (MTP): Faster Inference Natively
+Rather than predicting one token at a time, MTP trains the model to predict multiple future tokens simultaneously. At inference time this enables speculative decoding — a technique where candidate token sequences are verified in parallel, yielding up to 3× faster generation without any approximation or quality loss. Unlike bolted-on speculative decoding implementations, MTP is native to Nemotron 3 Super’s training objective, making it reliable across diverse tasks and long reasoning chains.
+3. NVFP4 Native Training: Precision Without the Post-Hoc Tax
+Nemotron 3 Super is pretrained on 25 trillion tokens using NVIDIA’s NVFP4 4-bit floating-point format — from the very first gradient update, not as a quantization step after the fact. This is significant: post-hoc quantization of large models typically incurs accuracy degradation that requires careful calibration to recover. By contrast, NVFP4-native training lets the model’s weights adapt to reduced precision throughout training, resulting in a 4-bit model that performs like a full-precision one. On NVIDIA Blackwell GPUs this translates to 4× faster inference than 8-bit models running on Hopper — with no accuracy penalty.
+
+Throughput: The Numbers in Context
+NVIDIA’s benchmarks report the following throughput gains in high-volume settings:
+Comparison
+Throughput Gain
+vs. GPT-OSS-120B (Transformer MoE)
+2.2× higher throughput
+vs. Qwen3.5-122B-A10B
+7.5× higher throughput
+vs. 8-bit models on Hopper (on Blackwell)
+4× faster inference
+vs. previous Nemotron Super model
+Up to 5× higher throughput, 2× higher accuracy
+
+The 7.5× gain over Qwen3.5-122B is particularly striking because both models share a broadly similar active parameter count (~10–12B active). The difference is almost entirely architectural: Qwen’s Transformer-based attention must read and write a massive KV cache on every decoding step; Nemotron 3 Super’s Mamba-2 layers recur over a fixed-size state, and its small set of attention anchors touch a far smaller cache.
+NVIDIA also pairs the model with its AI-Q research agent in public long-horizon demos, which is the more defensible way to frame agentic benchmark strength: the model is strong, but the end-to-end agent result depends on the surrounding system as well.
+
+Why This Matters for Real Agentic Workloads
+Most production agent systems today are constrained to the 8k–128k token range. Beyond that, three forces conspire against them: VRAM exhaustion prevents loading the full context; latency explodes as agents spend more time managing memory than reasoning; and cost compounds because longer contexts require either more GPUs or expensive cloud inference time.
+Nemotron 3 Super changes each of these constraints simultaneously. Native 1M-token context becomes practical rather than theoretical. Multi-agent collaboration — a code review agent, a testing agent, and a documentation agent sharing a common context window — fits comfortably in the 200–500k range on a single GPU without CPU offloading or multi-node sharding. And the MTP-accelerated throughput means that even during long chain-of-thought reasoning traces, the model feels interactive rather than glacial.
+What Opens Up at 1M Context
+•  RAG over entire codebases or book-length documents without chunking
+•  Multi-agent workflows sharing a full long-term memory window
+•  Multi-turn research assistants with months of conversation history
+•  Code generation with full repository context in a single pass
+•  Legal/compliance review of entire contract portfolios at once
+
+The 25 trillion token pretraining corpus and three-phase training pipeline (pretraining for world knowledge, supervised fine-tuning for task behaviour, reinforcement learning over agentic environments) also mean the model has been explicitly optimized for agentic decision-making — not just long-context retrieval.
+
+The Bigger Architectural Signal
+Nemotron 3 Super is not simply a larger or better-trained Transformer. It represents a deliberate architectural thesis: that attention-everywhere is the wrong default for long-context reasoning. Transformers default to attending over every token at every layer, which is powerful but expensive. The hybrid Mamba-Transformer approach inverts this assumption: Mamba handles the default case (sequence processing with linear complexity), and attention is reserved for the cases where it uniquely excels (precise token retrieval, long-range associative recall).
+The result is a model that degrades gracefully at scale rather than catastrophically. Where Transformer-based models hit a memory wall at 256k tokens, Nemotron 3 Super’s memory footprint grows slowly and predictably — exactly what long-running agents need.
+With open weights, full training recipes, and open datasets under the NVIDIA Open Model License, the community can now extend this hybrid paradigm: fine-tune for domain-specific agent tasks, distill into smaller variants, or push the architecture further. Nemotron 3 Ultra, arriving later in 2026, will extend the same innovations at larger scale.
+For anyone building autonomous agents, long-document RAG pipelines, or multi-turn research assistants: this architecture is not incremental progress. It is a new baseline.
+
+
+
+Availability
+Nemotron 3 Super is available at build.nvidia.com, Perplexity, OpenRouter, and Hugging Face. Open weights, datasets, and training recipes are released under the NVIDIA Open Model License.
+
+Sources
+	•	1. NVIDIA Technical Blog: Introducing Nemotron 3 Super
+	•	2. NVIDIA Blog: New NVIDIA Nemotron 3 Super Delivers 5x Higher Throughput for Agentic AI
+	•	3. NVIDIA Newsroom: NVIDIA Debuts Nemotron 3 Family of Open Models
+	•	4. NVIDIA Research: Nemotron 3 Super Technical Report (PDF)
+	•	5. Qwen3-235B-A22B-Instruct-2507 model card
+	•	6. Qwen deployment guide for 1M context
+	•	7. Llama 3.3 70B Instruct model card

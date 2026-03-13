@@ -7,7 +7,7 @@ title: "Architecture Deep Dive: Nemotron 3 Super"
 
 ## How NVIDIA’s Hybrid MoE Pushes 1M-Token Agentic AI Toward Practicality
 
-**By [Author Name]**  
+**By Nabeel Shah**  
 **Released March 2026** · **Audience:** ML engineers, technical PMs, and technically minded AI enthusiasts
 
 A few weeks ago, Qwen3.5-class models looked like the obvious open choice for serious long-context deployment. Nemotron 3 Super changes that equation: similar or better reported benchmark quality, much higher throughput, and a design that wastes less memory doing work attention never needed to own in every layer. ([NVIDIA][1])
@@ -41,6 +41,18 @@ Where:
 
 The point is not the exact constant. The point is the scaling behavior. As the sequence grows, the cache grows with it. At long contexts, that expanding memory footprint competes directly with model weights, activations, batching headroom, and overall throughput. This is why long-context serving often feels worse than model-card context windows suggest. A model may technically accept a huge prompt, but the runtime can still degrade because the system is spending too much effort moving memory around rather than doing useful work. This formulation is a standard engineering abstraction rather than a quoted NVIDIA equation, but it matches the model-design pressures NVIDIA is explicitly targeting in Nemotron 3 Super. ([NVIDIA][1])
 
+If you actually plug public architecture numbers into that equation, the systems problem becomes concrete very quickly. Using published head counts and dimensions for batch size 1, and expressing only the **BF16 KV cache** rather than total serving memory, you get:
+
+| Model | Geometry used for estimate | BF16 KV bytes/token | KV cache at 262k | KV cache at 1M |
+| --- | --- | ---: | ---: | ---: |
+| Nemotron 3 Super | 8 attention anchors from NVIDIA's published layer-pattern figure, 2 KV heads, head dim 128 | 8,192 | 2.0 GiB | 7.6 GiB |
+| Qwen3-235B-A22B-Instruct-2507 | 94 layers, 4 KV heads, head dim 128 | 192,512 | 47.0 GiB | 179.3 GiB |
+| Llama 3.3 70B Instruct | 80 layers, 8 KV heads, head dim 128 | 327,680 | 80.0 GiB | 305.2 GiB |
+
+Those numbers are intentionally narrow. They exclude model weights, activations, framework overhead, and in Nemotron's case the fixed-size recurrent state used by Mamba-2. But that is exactly why they are useful: they isolate the part of long-context serving that grows with sequence length. Qwen's own 1M-context guidance is a good cross-check here. The docs warn that a 1M-token deployment needs roughly **1,000 GB of total GPU memory**, which is what happens when a very large attention stack meets a very long prompt. ([NVIDIA][1], [Qwen][2], [Qwen Docs][3], [Meta][4])
+
+I am using Qwen3-235B and Llama 3.3 in this table because their public configs make the KV-cache arithmetic explicit. NVIDIA's benchmark charts later in the article use a different comparison set, mainly Qwen3.5-122B and GPT-OSS-120B. That is a benchmark choice, not a contradiction in the systems argument.
+
 It is also worth separating two related but distinct issues. Full-sequence attention during prompt processing carries the familiar **quadratic** cost pattern, while decode-time KV-cache storage grows roughly **linearly** with sequence length. In practice, long-context systems suffer from both. Nemotron’s design is notable because it appears aimed at reducing pressure on both fronts, especially the decode-time cache burden. ([NVIDIA][1])
 
 ## Nemotron’s core bet: use attention strategically, not everywhere
@@ -59,7 +71,7 @@ In the public architecture table, NVIDIA provides exact figures for these design
 This configuration—particularly the reduction to just **2 KV heads** combined with **32 query heads**—is especially important for long-context inference, because minimizing KV-head count directly reduces decode-time cache growth. ([NVIDIA][1])
 
 ![Nemotron 3 Super Layer Pattern](assets/figure_2_layer_pattern.png)
-*Figure 1: Official layer pattern of Nemotron 3 Super. An 88-layer hybrid stack predominantly using Mamba-2 for linear-time context processing, with sparse LatentMoE for capacity, and selective Attention anchors for global routing.*
+*Figure 1: Official layer-pattern macro-block schedule for Nemotron 3 Super. Read literally, the published figure shows eight attention-anchor insertions across the stack, which is why the KV-cache estimate above stays far below attention-heavy peers.*
 
 That gives the model a very different shape from a conventional attention-heavy long-context Transformer. Nemotron is not trying to remove attention entirely. It is trying to reserve attention for the cases where it matters most, while shifting the default burden of sequence handling and conditional capacity into mechanisms with more favorable serving characteristics.
 
@@ -98,13 +110,13 @@ graph TD
 ```
 *Figure 2: Memory footprint contrast between Transformer Attention components and Mamba-2 SSM recurrent states.*
 
-The practical implication is straightforward: **Mamba-2 layers do not contribute to Transformer-style KV-cache growth**. 
+The practical implication is straightforward: **Mamba-2 layers do not contribute to Transformer-style KV-cache growth**.
 
-To understand why this is a massive breakthrough, we must look at the constraints of standard Transformers. On a Qwen-class pure-Transformer model, simply holding 256k tokens in context consumes ~6 GB of VRAM for the KV cache alone. Pushing that to a 1M-token context causes the KV cache to balloon to roughly 24 GB—eating up a massive portion of an H100 or B200's VRAM budget before a single weight or activation is even accounted for. Inference latency also explodes, as the system becomes entirely memory-bandwidth bound, spending its time reading and writing to enormous cache tensors rather than computing probabilities.
+Using NVIDIA's published layer pattern as the serving-side estimate, Nemotron lands at about **2.0 GiB of BF16 KV cache at 262k tokens** and **7.6 GiB at 1M tokens** for batch size 1. That is still a meaningful memory bill, but it is far closer to something a single high-end node can absorb. By contrast, large attention-heavy peers land in the **47-80 GiB** range at 262k and roughly **179-305 GiB** at 1M for the KV cache alone. ([NVIDIA][1], [Qwen][2], [Meta][4])
 
-Because Nemotron's Mamba-2 layers explicitly maintain a constant-size spatial volume for their recurrent state, **Nemotron 3 Super saves roughly 18 GB of VRAM at 1M tokens compared to a Qwen3.5-122B-class model**.
+That difference is why long context is fundamentally a systems problem. Once the cache reaches tens or hundreds of gibibytes, the model is not just "using a bigger prompt." It is spending a large fraction of its serving budget on memory traffic. Nemotron's Mamba-2 layers keep most of the stack out of that scaling law, so the model burns less VRAM and less bandwidth just to remember what it has already seen.
 
-That 18 GB of recovered VRAM is not just a theoretical win; it fundamentally changes what you can serve in production. It provides the crucial overhead required to:
+That recovered KV headroom is not just a theoretical win; it fundamentally changes what you can serve in production. It provides the crucial overhead required to:
 1. **Increase Batch Sizes:** Serve far more concurrent users on the same node without running out of memory.
 2. **Scale Multi-Agent Workloads:** Operate multiple independent agents (e.g., a massive code-review agent and a testing agent) sharing a common working state simultaneously on a single GPU.
 3. **Execute Looping Contexts:** Stack substantially longer reasoning chains in autonomous loops without forcing expensive CPU offloading or multi-node sharding.
@@ -213,3 +225,6 @@ Taken together, that makes Nemotron 3 Super more than another strong open model.
 **Nemotron 3 Super does not just raise the open-model bar — it raises the cost of ignoring architecture.**
 
 [1]: https://research.nvidia.com/labs/nemotron/files/NVIDIA-Nemotron-3-Super-Technical-Report.pdf?utm_source=chatgpt.com "Nemotron 3 Super: Open, Efficient Mixture-of-Experts ..."
+[2]: https://huggingface.co/Qwen/Qwen3-235B-A22B-Instruct-2507 "Qwen3-235B-A22B-Instruct-2507"
+[3]: https://qwen.readthedocs.io/en/latest/deployment/vllm.html "Qwen deployment guide"
+[4]: https://huggingface.co/meta-llama/Llama-3.3-70B-Instruct "Llama 3.3 70B Instruct"

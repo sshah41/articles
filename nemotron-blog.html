@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nemotron 3 Super: The Math of 1M-Token AI</title>
+    <!-- 3B1B typography & KaTeX for real math rendering -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300&family=Fira+Code:wght@400;500&family=Work+Sans:wght@300;500;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"
+        onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}]});"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #0d0d10;
+            /* Darker, truer black for math contrast */
+            --text-color: #e5e7eb;
+            --heading-color: #ffffff;
+            --accent-green: #3fb950;
+            --accent-cyan: #2f81f7;
+            --accent-orange: #d29922;
+            --accent-red: #f85149;
+            --accent-purple: #bc8cff;
+            --math-gold: #f1e05a;
+            /* 3B1B classic equation color */
+
+            --font-body: 'Merriweather', serif;
+            --font-heading: 'Work Sans', sans-serif;
+            --font-mono: 'Fira Code', monospace;
+        }
+
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-body);
+            overflow-x: hidden;
+            font-size: 19px;
+            line-height: 1.8;
+            scroll-behavior: smooth;
+        }
+
+        /* Reading Progress Bar */
+        #progress-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: transparent;
+            z-index: 1000;
+        }
+
+        #progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
+            transition: width 0.1s;
+        }
+
+        /* Fixed Background Canvas */
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        #canvas-container::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, rgba(13, 13, 16, 0.95) 0%, rgba(13, 13, 16, 0.6) 45%, transparent 100%);
+        }
+
+        /* Scrollytelling Structure */
+        #article-container {
+            position: relative;
+            z-index: 10;
+            max-width: 550px;
+            margin: 0 5%;
+            padding-top: 40vh;
+            padding-bottom: 50vh;
+        }
+
+        @media (min-width: 1100px) {
+            #article-container {
+                margin-left: 12%;
+                max-width: 600px;
+            }
+        }
+
+        .step {
+            margin-bottom: 90vh;
+            padding: 2.5rem;
+            background: rgba(18, 18, 22, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8);
+            opacity: 0.15;
+            transform: translateY(30px);
+            transition: opacity 0.7s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .step.is-active {
+            opacity: 1;
+            transform: translateY(0);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        /* Typography */
+        h1,
+        h2,
+        h3,
+        h4 {
+            font-family: var(--font-heading);
+            color: var(--heading-color);
+            margin-top: 0;
+            line-height: 1.25;
+            font-weight: 700;
+        }
+
+        h1 {
+            font-size: 2.8rem;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.5rem;
+        }
+
+        h2 {
+            font-size: 1.7rem;
+            margin-bottom: 1rem;
+            color: var(--heading-color);
+        }
+
+        .meta {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--text-color);
+            opacity: 0.6;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 1.5rem;
+            display: block;
+        }
+
+        p {
+            margin-bottom: 1.5rem;
+            color: #d1d5db;
+            font-weight: 300;
+        }
+
+        strong {
+            color: #fff;
+            font-weight: 700;
+        }
+
+        /* Keyword Spans */
+        .kw-red {
+            color: var(--accent-red);
+            font-weight: 700;
+            font-family: var(--font-heading);
+        }
+
+        .kw-green {
+            color: var(--accent-green);
+            font-weight: 700;
+            font-family: var(--font-heading);
+        }
+
+        .kw-cyan {
+            color: var(--accent-cyan);
+            font-weight: 700;
+            font-family: var(--font-heading);
+        }
+
+        .kw-orange {
+            color: var(--accent-orange);
+            font-weight: 700;
+            font-family: var(--font-heading);
+        }
+
+        .kw-purple {
+            color: var(--accent-purple);
+            font-weight: 700;
+            font-family: var(--font-heading);
+        }
+
+        /* Real KaTeX Overlays */
+        .katex-display {
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 8px;
+            border-left: 3px solid var(--math-gold);
+            color: var(--math-gold);
+        }
+
+        .katex {
+            font-size: 1.1em;
+        }
+
+        /* Slightly larger math */
+
+        /* Floating 3D WebGL Labels */
+        .math-label {
+            position: absolute;
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.9);
+            padding: 4px 10px;
+            border-radius: 4px;
+            pointer-events: none;
+            opacity: 0;
+            transform: translate(-50%, -50%);
+            transition: opacity 0.4s ease;
+            z-index: 5;
+            white-space: nowrap;
+        }
+
+        .lbl-matrix {
+            background: rgba(241, 224, 90, 0.15);
+            border: 1px solid var(--math-gold);
+            color: var(--math-gold);
+        }
+
+        .lbl-limit {
+            background: rgba(248, 81, 73, 0.15);
+            border: 1px solid var(--accent-red);
+            color: var(--accent-red);
+        }
+
+        .lbl-fp4 {
+            background: rgba(188, 140, 255, 0.15);
+            border: 1px solid var(--accent-purple);
+            color: var(--accent-purple);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="progress-container">
+        <div id="progress-bar"></div>
+    </div>
+
+    <!-- Dynamic Labels tracking the WebGL geometry -->
+    <div id="lbl-kv" class="math-label lbl-matrix">$$\mathbf{KV} \in \mathbb{R}^{B \times L \times H \times d}$$</div>
+    <div id="lbl-limit" class="math-label lbl-limit">80GB VRAM LIMIT</div>
+    <div id="lbl-wdown" class="math-label lbl-matrix">$$W_{down} \in \mathbb{R}^{d \times d_{latent}}$$</div>
+    <div id="lbl-nvfp4" class="math-label lbl-fp4">4-bit INT Matrix</div>
+
+    <div id="canvas-container">
+        <canvas id="glcanvas"></canvas>
+    </div>
+
+    <main id="article-container">
+
+        <!-- STEP 0 -->
+        <section class="step" data-state="0">
+            <span class="meta">March 2026 · The Mathematics of 1M Tokens</span>
+            <h1>Nemotron 3 Super</h1>
+            <p>To understand why a <strong>1-million token context window</strong> has been practically impossible until
+                now, we need to abandon abstract descriptions and look at strict linear algebra.</p>
+            <p>Released by NVIDIA in 2026, Nemotron 3 Super is a 120B-parameter model that redraws the frontier for
+                agentic AI. It achieves this by mathematically dismantling the assumption that the Attention mechanism
+                $A(Q, K, V)$ must be computed at every layer.</p>
+            <p>Let's map the vector space of the problem.</p>
+        </section>
+
+        <!-- STEP 1 -->
+        <section class="step" data-state="1">
+            <h2>The KV Tensor Explosion</h2>
+            <p>When feeding standard models (Llama, Standard MoEs) a long prompt, the network computes and stores Key
+                ($K$) and Value ($V$) tensors for every token across all attention layers.</p>
+            <p>This creates an expanding 4-dimensional tensor $\mathbf{T}_{KV}$ whose memory volume is defined as:</p>
+
+            <!-- Real LaTeX Rendering -->
+            $$ Volume = 2 \cdot L_{attn} \cdot (B \cdot S \cdot N_h \cdot d_h) \cdot p $$
+
+            <p>Where $B$ is Batch Size, $S$ is Sequence length, $N_h$ is heads, $d_h$ is dimension, and $p$ is precision
+                bytes (2 for FP16).</p>
+            <p>Watch the true geometry of the tensor on the right. As the Sequence $S$ approaches 1M tokens, the tensor
+                volume scales linearly until it crashes violently into the <span class="kw-red">80 GB VRAM Limit</span>
+                of an H100 GPU.</p>
+        </section>
+
+        <!-- STEP 2 -->
+        <section class="step" data-state="2">
+            <h2>Sparse Attention Tensors</h2>
+            <p>Nemotron 3 Super avoids this mathematical ceiling by drastically reducing the scalar $L_{attn}$.</p>
+            <p>Watch the tensor collapse in dimension. Rather than calculating Attention at all $L=52$ layers, Nemotron
+                sets $L_{attn} = 6$. These few <span class="kw-green">GQA Layers</span> act as sparse global anchors.
+            </p>
+            <p>Comparing the volumes, Nemotron's $\mathbf{T}_{KV}$ is roughly <strong>4× smaller</strong>. This allows
+                teams to scale the Batch Size $B$ (concurrent agent workflows) without triggering out-of-memory errors.
+            </p>
+        </section>
+
+        <!-- STEP 3 -->
+        <section class="step" data-state="3">
+            <h2>State-Space Compression ($h_t$)</h2>
+            <p>If only 6 layers handle the $O(N^2)$ scalar dot products of Attention, who processes the sequence $S$?
+            </p>
+            <p>The core pipeline employs <span class="kw-cyan">23 Mamba-2 Layers</span>. As a State-Space Model (SSM),
+                Mamba updates a fixed-size hidden state $h_t$ at each timestep:</p>
+            $$ h_t = \mathbf{\bar{A}} h_{t-1} + \mathbf{\bar{B}} x_t $$
+            <p>Because $h_t$ remains constant recursively, Mamba-2 contributes exactly <strong>zero volume</strong> to
+                the expanding KV tensor, operating in $O(N)$ linear time.</p>
+        </section>
+
+        <!-- STEP 4 -->
+        <section class="step" data-state="4">
+            <h2>Latent Linear Projections</h2>
+            <p>Interleaved in the stack are <span class="kw-orange">23 LatentMoE Layers</span>.</p>
+            <p>Standard MoE routes high-dimensional vectors $\mathbf{x} \in \mathbb{R}^d$ directly. <em>LatentMoE</em>
+                explicitly multiplies $\mathbf{x}$ by a projection matrix $W_{down}$ to compress it into a continuous
+                latent bottleneck:</p>
+            $$ \mathbf{z} = W_{down} \mathbf{x} $$
+            <p>Observe the geometric plane representing $W_{down}$. The dimensionality collapses into the bottleneck,
+                routes through a subset of 128 micro-experts (only lighting up $k=8$ non-zero activations), and expands
+                back via $W_{up}$.</p>
+        </section>
+
+        <!-- STEP 5 -->
+        <section class="step" data-state="5">
+            <h2>NVFP4: Precision Quantization</h2>
+            <p>Memory capacity is only half the battle; inference is completely memory-bandwidth bound. To maximize
+                throughput, Nemotron doesn't use standard 16-bit precision natively.</p>
+            <p>Watch the 16-bit float tensor physically crush itself into a dense block. Nemotron is trained from day
+                one using <span class="kw-purple">NVIDIA FP4 (NVFP4)</span>, a 4-bit floating point format.</p>
+            <p>By shrinking the precision scalar $p$ from 2 bytes to 0.5 bytes without post-hoc accuracy loss, the GPU
+                can move matrix weights 4× faster from HBM to SRAM, vastly multiplying execution speed.</p>
+        </section>
+
+        <!-- STEP 6 -->
+        <section class="step" data-state="6">
+            <h2>The New Constant Baseline</h2>
+            <p>By composing these three innovations — sparse $A(Q,K,V)$, recurrent $\bar{A}h$, and dense 4-bit $W$
+                matrices — Nemotron 3 Super proves that transformer attention is merely a specialized tool, not a
+                universal requirement.</p>
+            <p>Codebase-wide generations, legal contract reviews, and multi-agent loops sharing a $S=1,000,000$ context
+                window are no longer abstract theories.</p>
+            <p>The memory wall was just a solvable equation.</p>
+        </section>
+
+    </main>
+
+    <script>
+        // ----------------------------------------------------
+        // Explicit Matrix/Tensor WebGL Engine (3B1B Brutal Overhaul)
+        // ----------------------------------------------------
+
+        // Progress Bar
+        window.addEventListener('scroll', () => {
+            const h = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+            document.getElementById("progress-bar").style.width = ((document.documentElement.scrollTop / h) * 100) + "%";
+        });
+
+        const canvas = document.getElementById('glcanvas');
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+        function resize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            const isDesktop = window.innerWidth > 1000;
+            camera.position.set(isDesktop ? 30 : 0, 15, 100);
+            camera.lookAt(isDesktop ? 15 : 0, 0, 0);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        window.addEventListener('resize', resize); resize();
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+        const dir = new THREE.DirectionalLight(0xffffff, 1.2); dir.position.set(20, 50, 20); scene.add(dir);
+
+        // --- Geometric Elements ---
+
+        // 1. Math Coordinate Grid
+        const gridHelper = new THREE.GridHelper(60, 20, 0x444444, 0x222222);
+        gridHelper.position.y = -15;
+        gridHelper.material.transparent = true;
+        scene.add(gridHelper);
+
+        // 2. The 80GB VRAM Limit Plane
+        const planeGeo = new THREE.PlaneGeometry(30, 30);
+        const planeMat = new THREE.MeshBasicMaterial({ color: 0xf85149, transparent: true, opacity: 0, wireframe: true });
+        const limitPlane = new THREE.Mesh(planeGeo, planeMat);
+        limitPlane.rotation.x = Math.PI / 2; limitPlane.position.set(15, 15, 0);
+        scene.add(limitPlane);
+
+        // 3. W_down Projection Plane (For LatentMoE)
+        const projPlaneGeo = new THREE.PlaneGeometry(25, 25);
+        const projPlaneMat = new THREE.MeshBasicMaterial({ color: 0xf1e05a, transparent: true, opacity: 0, side: THREE.DoubleSide, wireframe: true });
+        const wDownPlane = new THREE.Mesh(projPlaneGeo, projPlaneMat);
+        wDownPlane.position.set(15, 5, 0);
+        scene.add(wDownPlane);
+
+        // --- Core Explicit Tensor Grid (Instead of scattered particles) ---
+        // We will define exactly a 16 x 32 x 10 grid of cubes representing the Tensor Memory Block
+        const DIM_X = 16; const DIM_Y = 35; const DIM_Z = 12;
+        const NUM_CUBES = DIM_X * DIM_Y * DIM_Z;
+
+        // Standard cube representing memory blocks
+        const boxGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+        const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1, metalness: 0.8 });
+        const iMesh = new THREE.InstancedMesh(boxGeo, mat, NUM_CUBES);
+        iMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        scene.add(iMesh);
+
+        // Arrays for rigorous interpolation
+        const dummy = new THREE.Object3D();
+        const pos = new Float32Array(NUM_CUBES * 3);
+        const targPos = new Float32Array(NUM_CUBES * 3);
+        const col = new Float32Array(NUM_CUBES * 3);
+        const targCol = new Float32Array(NUM_CUBES * 3);
+        const sc = new Float32Array(NUM_CUBES).fill(1);
+        const targSc = new Float32Array(NUM_CUBES).fill(1);
+        const tmpC = new THREE.Color();
+
+        // Palette
+        const C_WHITE = new THREE.Color(0xd1d5db);
+        const C_RED = new THREE.Color(0xf85149);
+        const C_GREEN = new THREE.Color(0x3fb950);
+        const C_CYAN = new THREE.Color(0x2f81f7);
+        const C_ORANGE = new THREE.Color(0xd29922);
+        const C_DARK = new THREE.Color(0x111116);
+        const C_PURPLE = new THREE.Color(0xbc8cff);
+
+        // Initial invisible scatter state
+        for (let i = 0; i < NUM_CUBES; i++) {
+            pos[i * 3] = (Math.random() - 0.5) * 100 + 15;
+            pos[i * 3 + 1] = (Math.random() - 0.5) * 100;
+            pos[i * 3 + 2] = (Math.random() - 0.5) * 100;
+            col[i * 3] = C_DARK.r; col[i * 3 + 1] = C_DARK.g; col[i * 3 + 2] = C_DARK.b;
+        }
+
+        function setT(i, x, y, z, c, s) {
+            targPos[i * 3] = x; targPos[i * 3 + 1] = y; targPos[i * 3 + 2] = z;
+            targCol[i * 3] = c.r; targCol[i * 3 + 1] = c.g; targCol[i * 3 + 2] = c.b;
+            targSc[i] = s;
+        }
+
+        // --- STRICT MATHEMATICAL STATES --- //
+
+        function s0_Idle() {
+            gridHelper.material.opacity = 0.1; planeMat.opacity = 0; projPlaneMat.opacity = 0;
+            for (let i = 0; i < NUM_CUBES; i++) {
+                // Spherical cluster geometry
+                const r = 12 * Math.cbrt(Math.random());
+                const a = Math.random() * Math.PI * 2; const b = Math.acos(2 * Math.random() - 1);
+                setT(i, 15 + r * Math.sin(b) * Math.cos(a), r * Math.cos(b), r * Math.sin(b) * Math.sin(a), C_DARK, 0); // Hide
+            }
+        }
+
+        function s1_KV_Explosion() {
+            gridHelper.material.opacity = 0.3; planeMat.opacity = 0.5; projPlaneMat.opacity = 0;
+            let idx = 0;
+            // Build a rigid 3D tensor block originating from the floor
+            for (let y = 0; y < DIM_Y; y++) {
+                for (let x = 0; x < DIM_X; x++) {
+                    for (let z = 0; z < DIM_Z; z++) {
+                        const w = 1.05; // Tight matrix packing
+                        const pY = -14.5 + y * w;
+                        let c = C_WHITE;
+                        if (pY > 15) c = C_RED; // Breaches the limit plane
+                        setT(idx++, 15 + (x - DIM_X / 2) * w, pY, (z - DIM_Z / 2) * w, c, 1.0);
+                    }
+                }
+            }
+            latchedLabels['lbl-limit'] = new THREE.Vector3(30, 15, 0);
+            latchedLabels['lbl-kv'] = new THREE.Vector3(15, 0, 10);
+        }
+
+        function s2_KV_Shrunk() {
+            gridHelper.material.opacity = 0.3; planeMat.opacity = 0.1; projPlaneMat.opacity = 0;
+            let idx = 0;
+            // The tensor collapses down to 6 computational layers (very short height)
+            const SPARSE_Y = Math.ceil(DIM_Y / 4);
+            for (let y = 0; y < DIM_Y; y++) {
+                for (let x = 0; x < DIM_X; x++) {
+                    for (let z = 0; z < DIM_Z; z++) {
+                        if (y < SPARSE_Y) {
+                            // Valid sparse tensor block
+                            setT(idx++, 15 + (x - DIM_X / 2) * 1.05, -14.5 + y * 1.05, (z - DIM_Z / 2) * 1.05, C_GREEN, 1.0);
+                        } else {
+                            // The rest are zeroed out (dropped attention)
+                            setT(idx++, 15 + (x - DIM_X / 2) * 1.05, -14.5 + y * 1.05, (z - DIM_Z / 2) * 1.05, C_DARK, 0);
+                        }
+                    }
+                }
+            }
+        }
+
+        function s3_SSM_Mamba() {
+            gridHelper.material.opacity = 0.1; planeMat.opacity = 0; projPlaneMat.opacity = 0;
+            // Constant hidden state: A fixed cylinder representation rather than growing sequence
+            for (let i = 0; i < NUM_CUBES; i++) {
+                const angle = (i % 30) / 30 * Math.PI * 2;
+                const height = Math.floor(i / 30) * 0.5 - 15;
+                if (height > 10) { setT(i, 15, height, 0, C_DARK, 0); continue; } // Cap height
+
+                const r = 8;
+                setT(i, 15 + Math.cos(angle) * r, height, Math.sin(angle) * r, C_CYAN, 0.4);
+            }
+        }
+
+        function s4_Latent_WDown() {
+            gridHelper.material.opacity = 0.1; planeMat.opacity = 0; projPlaneMat.opacity = 0.6;
+            // Line of vectors projecting "through" the W_down plane into a dense bottleneck
+            for (let i = 0; i < NUM_CUBES; i++) {
+                if (i < NUM_CUBES * 0.6) {
+                    // Pre-projection: High dimensional space (wide radius cylinder)
+                    const angle = Math.random() * Math.PI * 2;
+                    const r = 10 * Math.random();
+                    const y = 25 - Math.random() * 20; // Above plane (Y=5)
+                    setT(i, 15 + Math.cos(angle) * r, y, Math.sin(angle) * r, C_WHITE, 0.6);
+                } else if (i < NUM_CUBES * 0.9) {
+                    // Post-projection bottleneck: Small tight vector near center
+                    const angle = Math.random() * Math.PI * 2;
+                    const r = 2 * Math.random();
+                    const y = 5 - Math.random() * 10; // Below plane
+                    setT(i, 15 + Math.cos(angle) * r, y, Math.sin(angle) * r, C_ORANGE, 0.8);
+                } else {
+                    // 128 Experts Cloud very far below
+                    const cI = i % 128;
+                    const cAng = cI * 0.5; const cR = 15;
+                    const exX = 15 + Math.cos(cAng) * cR; const exZ = Math.sin(cAng) * cR;
+                    const isActive = cI < 8; // top-k routing
+                    setT(i, exX + (Math.random() - 0.5) * 2, -10 + (Math.random() - 0.5) * 2, exZ + (Math.random() - 0.5) * 2, isActive ? C_ORANGE : C_DARK, isActive ? 1.5 : 0.2);
+                }
+            }
+            latchedLabels['lbl-wdown'] = new THREE.Vector3(25, 5, -12);
+        }
+
+        function s5_NVFP4_Quantize() {
+            gridHelper.material.opacity = 0.2; planeMat.opacity = 0; projPlaneMat.opacity = 0;
+            // FP16 Block crushing into an INT4 block
+            let idx = 0;
+            // Outer semi-transparent block (representing 16-bit physical size)
+            for (let y = 0; y < 20; y++) {
+                for (let x = 0; x < 16; x++) {
+                    for (let z = 0; z < 16; z++) {
+                        if (idx >= NUM_CUBES) break;
+                        // Determine if part of the inner dense 4-bit core
+                        const inCore = (y < 5 && x > 4 && x < 12 && z > 4 && z < 12);
+
+                        // Physics of compression: the outer grid shrinks dramatically
+                        const scale = inCore ? 1.2 : 0.15;
+                        const c = inCore ? C_PURPLE : C_WHITE;
+
+                        let px = 15 + (x - 8) * 1.2;
+                        let py = -10 + y * 1.2;
+                        let pz = (z - 8) * 1.2;
+
+                        if (inCore) {
+                            // Dense core pulled together
+                            px = 15 + (x - 8) * 0.5; py = -13 + y * 0.5; pz = (z - 8) * 0.5;
+                        }
+
+                        setT(idx++, px, py, pz, c, scale);
+                    }
+                }
+            }
+            latchedLabels['lbl-nvfp4'] = new THREE.Vector3(20, -12, 10);
+        }
+
+        function s6_Conclusion() {
+            gridHelper.material.opacity = 0.05; planeMat.opacity = 0; projPlaneMat.opacity = 0;
+            for (let i = 0; i < NUM_CUBES; i++) {
+                const x = 15 + (i % 50) * 0.5 - 12.5;
+                const z = (Math.floor(i / 50) % 50) * 0.5 - 12.5;
+                const y = Math.sin(x * 0.5 + time) * 2 + Math.cos(z * 0.5 + time) * 2;
+                setT(i, x, y - 10, z, C_GREEN, 0.4);
+            }
+        }
+
+        let activeState = -1;
+        const states = [s0_Idle, s1_KV_Explosion, s2_KV_Shrunk, s3_SSM_Mamba, s4_Latent_WDown, s5_NVFP4_Quantize, s6_Conclusion];
+        let latchedLabels = {};
+
+        function changeState(idx) {
+            if (activeState === idx) return;
+            activeState = idx;
+            latchedLabels = {}; // Reset tracking targets
+            if (states[idx]) states[idx]();
+
+            // HTML Visibility Toggles
+            document.getElementById('lbl-kv').style.opacity = (idx === 1) ? 1 : 0;
+            document.getElementById('lbl-limit').style.opacity = (idx === 1 || idx === 2) ? 1 : 0;
+            document.getElementById('lbl-wdown').style.opacity = (idx === 4) ? 1 : 0;
+            document.getElementById('lbl-nvfp4').style.opacity = (idx === 5) ? 1 : 0;
+        }
+
+        const obs = new IntersectionObserver((entries) => {
+            entries.forEach(e => {
+                if (e.isIntersecting) {
+                    document.querySelectorAll('.step').forEach(el => el.classList.remove('is-active'));
+                    e.target.classList.add('is-active');
+                    e.target.querySelectorAll('.katex-display').forEach(k => {
+                        k.style.opacity = '0'; k.style.transform = 'translateY(10px)';
+                        setTimeout(() => { k.style.transition = 'all 0.5s ease'; k.style.opacity = '1'; k.style.transform = 'translateY(0)'; }, 300);
+                    });
+                    changeState(parseInt(e.target.getAttribute('data-state')));
+                }
+            });
+        }, { rootMargin: '-40% 0px -40% 0px', threshold: 0 });
+        document.querySelectorAll('.step').forEach(s => obs.observe(s));
+        changeState(0);
+
+        // Animation Loop
+        let time = 0;
+        function animate() {
+            requestAnimationFrame(animate);
+            time += 0.015;
+
+            const lerpP = 0.05; const lerpS = 0.04;
+
+            for (let i = 0; i < NUM_CUBES; i++) {
+                // If the cube is hidden (scale 0), don't bother simulating complex motion
+                if (targSc[i] < 0.01 && sc[i] < 0.01) continue;
+
+                let nx = 0, ny = 0, nz = 0;
+
+                // Active Matrix Dynamics
+                if (activeState === 1 && targPos[i * 3 + 1] > 15) {
+                    // OOM Vibration
+                    nx = (Math.random() - 0.5) * 0.8; ny = (Math.random() - 0.5) * 0.8; nz = (Math.random() - 0.5) * 0.8;
+                } else if (activeState === 6) {
+                    ny = Math.sin(targPos[i * 3] * 0.5 + time * 2) * 0.5; // Wave flow
+                }
+
+                pos[i * 3] += (targPos[i * 3] + nx - pos[i * 3]) * lerpP;
+                pos[i * 3 + 1] += (targPos[i * 3 + 1] + ny - pos[i * 3 + 1]) * lerpP;
+                pos[i * 3 + 2] += (targPos[i * 3 + 2] + nz - pos[i * 3 + 2]) * lerpP;
+
+                sc[i] += (targSc[i] - sc[i]) * lerpS;
+
+                col[i * 3] += (targCol[i * 3] - col[i * 3]) * lerpP;
+                col[i * 3 + 1] += (targCol[i * 3 + 1] - col[i * 3 + 1]) * lerpP;
+                col[i * 3 + 2] += (targCol[i * 3 + 2] - col[i * 3 + 2]) * lerpP;
+
+                dummy.position.set(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]);
+                // Rigid matrix rotation vs organic flow
+                dummy.rotation.x = (activeState === 6) ? time : 0;
+                dummy.rotation.y = (activeState === 6) ? time : 0;
+                dummy.scale.setScalar(Math.max(0.001, sc[i]));
+                dummy.updateMatrix();
+
+                iMesh.setMatrixAt(i, dummy.matrix);
+                tmpC.setRGB(col[i * 3], col[i * 3 + 1], col[i * 3 + 2]);
+                iMesh.setColorAt(i, tmpC);
+            }
+            iMesh.instanceMatrix.needsUpdate = true;
+            if (iMesh.instanceColor) iMesh.instanceColor.needsUpdate = true;
+
+            // Camera Swooping (3B1B Orchestration)
+            let targCamX = 30, targCamY = 15, targCamZ = 100;
+            if (activeState === 1 || activeState === 2) {
+                targCamX = 40 + Math.sin(time * 0.2) * 10; targCamY = 20; targCamZ = 80 + Math.cos(time * 0.2) * 10;
+            } else if (activeState === 4) {
+                targCamX = 35; targCamY = 5; targCamZ = 60; // Look at W_down Bottleneck
+            } else if (activeState === 5) {
+                targCamX = 25; targCamY = -5; targCamZ = 45; // Close up on NVFP4 compression
+            }
+
+            if (window.innerWidth > 1000) {
+                camera.position.x += (targCamX - camera.position.x) * 0.02;
+                camera.position.y += (targCamY - camera.position.y) * 0.02;
+                camera.position.z += (targCamZ - camera.position.z) * 0.02;
+                camera.lookAt(15, 0, 0);
+            }
+
+            renderer.render(scene, camera);
+
+            // Update DOM Math Labels
+            for (const [id, vec3] of Object.entries(latchedLabels)) {
+                const el = document.getElementById(id);
+                if (!el || el.style.opacity === '0') continue;
+
+                const vector = vec3.clone();
+                vector.project(camera);
+                const x = (vector.x * .5 + .5) * window.innerWidth;
+                const y = (vector.y * -.5 + .5) * window.innerHeight;
+                el.style.left = `${x}px`; el.style.top = `${y}px`;
+            }
+        }
+
+        iMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(NUM_CUBES * 3), 3);
+        animate();
+
+    </script>
+</body>
+
+</html>

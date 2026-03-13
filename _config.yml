@@ -1,0 +1,5 @@
+theme: minimal
+markdown: kramdown
+highlighter: rouge
+plugins:
+  - jekyll-seo-tag
